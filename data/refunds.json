@@ -1,0 +1,19 @@
+{
+  "note": "Aportes que Ceneka sigue mostrando y acá no suman: confundieron pesos con dólares (querían unos 300 pesos y donaron unos 300 dólares). Después se devolvieron.",
+  "refunds": [
+    {
+      "id": 1920557,
+      "nombre": "ElShinsengumi",
+      "monto_ars": 498750,
+      "monto_usd": 350,
+      "reason": "Confusión de moneda: $498.750 (US$ 350) en lugar de unos 350 pesos. El mismo donante escribió después «no me cambió la moneda». Se devolvió."
+    },
+    {
+      "id": 1923249,
+      "nombre": "Trashcuenta",
+      "monto_ars": 430500,
+      "monto_usd": 300,
+      "reason": "Confusión de moneda: $430.500 (US$ 300) en lugar de unos 300 pesos. Se devolvió."
+    }
+  ]
+}

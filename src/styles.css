@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-source);
+  --font-heading: var(--font-display);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  --font-source: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", Palatino, Georgia, serif;
+  --background: oklch(0.962 0.014 88);
+  --foreground: oklch(0.27 0.04 255);
+  --card: oklch(0.992 0.006 95);
+  --card-foreground: oklch(0.27 0.04 255);
+  --primary: oklch(0.43 0.09 248);
+  --primary-foreground: oklch(0.98 0.008 95);
+  --secondary: oklch(0.93 0.018 88);
+  --secondary-foreground: oklch(0.32 0.04 255);
+  --muted: oklch(0.935 0.016 88);
+  --muted-foreground: oklch(0.48 0.03 255);
+  --accent: oklch(0.92 0.04 55);
+  --accent-foreground: oklch(0.38 0.09 45);
+  --destructive: oklch(0.52 0.17 27);
+  --destructive-foreground: oklch(0.98 0.008 95);
+  --border: oklch(0.87 0.02 85);
+  --input: oklch(0.86 0.02 85);
+  --ring: oklch(0.43 0.09 248);
+  --radius: 0.625rem;
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    font-family: var(--font-source);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-source);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+  }
+
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 22%, white);
+  }
+}
