@@ -216,6 +216,9 @@ export type StatsScope = {
   cur: "ars" | "usd";
 };
 
+/** Donor lists inside concentration cards are capped to keep the page light. */
+export const CONCENTRATION_LIST_MAX = 250;
+
 export const DEFAULT_SCOPE: StatsScope = { when: "", from: "", to: "", cur: "ars" };
 
 export type DonorLine = {
@@ -447,7 +450,9 @@ export type ConcentrationReport = {
   under: ConcentrationBand;
   over: ConcentrationBand;
   recurrent: {
+    /** First CONCENTRATION_LIST_MAX donors; donorCount has the full size. */
     donors: ConcentrationDonor[];
+    donorCount: number;
     donorShare: number;
     amountShare: number;
   };

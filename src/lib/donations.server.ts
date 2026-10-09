@@ -14,6 +14,7 @@ import {
   type ConcentrationReport,
   type Donation,
   type DonorChoice,
+  CONCENTRATION_LIST_MAX,
   type DonorProfile,
   type Filters,
   type Mining,
@@ -684,11 +685,16 @@ function sitesOf(rows: IndexedDonation[]) {
   return siteChoices;
 }
 
+export function donorChoiceList() {
+  return ensure().donorChoices;
+}
+
 function context() {
-  const { months, donorChoices, lastDay, rows } = ensure();
+  const { months, lastDay, rows } = ensure();
   return {
     months,
-    donors: donorChoices,
+    // The donor autocomplete list is ~150 KB; it loads on demand (getDonorChoices).
+    donors: [] as DonorChoice[],
     sites: sitesOf(rows),
     lastDay: lastDay == null ? "" : formatYmd(lastDay),
   };
@@ -895,7 +901,7 @@ export function concentrate(params: ConcentrationParams): ConcentrationReport {
 
   const cuts = params.cuts.map((pct) => {
     const donors = donorsUntilShare(ranked, total, pct);
-    return { pct, donorCount: donors.length, donors };
+    return { pct, donorCount: donors.length, donors: donors.slice(0, CONCENTRATION_LIST_MAX) };
   });
 
   const typical: AmountBucket[] = params.typical.map((amount) => {
@@ -972,7 +978,8 @@ export function concentrate(params: ConcentrationParams): ConcentrationReport {
         .map(toHit),
     },
     recurrent: {
-      donors: recurrentDonors,
+      donors: recurrentDonors.slice(0, CONCENTRATION_LIST_MAX),
+      donorCount: recurrentDonors.length,
       donorShare: ranked.length > 0 ? recurrentDonors.length / ranked.length : 0,
       amountShare: total > 0 ? recurrentAmount / total : 0,
     },

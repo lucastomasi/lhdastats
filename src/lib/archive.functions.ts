@@ -57,3 +57,8 @@ export const getDonorPage = createServerFn({ method: "GET" })
     const { donorPayload } = await import("./donations.server");
     return donorPayload(data.name, data.filters);
   });
+
+export const getDonorChoices = createServerFn({ method: "GET" }).handler(async () => {
+  const { donorChoiceList } = await import("./donations.server");
+  return donorChoiceList();
+});

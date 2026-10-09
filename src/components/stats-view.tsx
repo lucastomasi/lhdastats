@@ -359,7 +359,7 @@ export function ScopeBar({
   const isPreset = (key: string) => scope.when === key && !scope.from && !scope.to;
 
   return (
-    <div className="sticky top-0 z-30 -mx-4 border-b border-border/80 bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <div className="sticky top-0 z-30 border-b border-border/80 bg-background/95 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto max-w-6xl">
         <details className="fold">
           <summary className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1">

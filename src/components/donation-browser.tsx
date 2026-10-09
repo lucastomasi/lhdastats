@@ -15,6 +15,7 @@ import {
   type MonthOption,
   type PageResult,
 } from "@/lib/archive";
+import { getDonorChoices } from "@/lib/archive.functions";
 import { CONDUCT_ORDER } from "@/lib/conduct";
 import { formatArs, formatCount, formatUsd, formatWhen } from "@/lib/format";
 import {
@@ -38,6 +39,8 @@ const PRESETS: { key: string; label: string }[] = [
   { key: "mes", label: "Este mes" },
   { key: "ultimo", label: "Último día del archivo" },
 ];
+
+let donorChoicesPromise: Promise<DonorChoice[]> | null = null;
 
 export function DonationBrowser({
   filters,
@@ -70,12 +73,19 @@ export function DonationBrowser({
   const range = resolveDateRange(filters, Date.now(), lastArchiveDay);
   const [donorDraft, setDonorDraft] = useState(filters.donor);
   const [donorOpen, setDonorOpen] = useState(false);
+  const [donorPool, setDonorPool] = useState<DonorChoice[]>(donors);
+
+  function loadDonors() {
+    if (donorPool.length > 0 || !includeDonor) return;
+    if (!donorChoicesPromise) donorChoicesPromise = getDonorChoices().catch(() => [] as DonorChoice[]);
+    void donorChoicesPromise.then((list) => setDonorPool(list));
+  }
 
   const suggestions = useMemo(() => {
     const needle = fold(donorDraft);
-    const pool = needle ? donors.filter((row) => fold(row.nombre).includes(needle)) : donors;
+    const pool = needle ? donorPool.filter((row) => fold(row.nombre).includes(needle)) : donorPool;
     return pool.slice(0, 8);
-  }, [donorDraft, donors]);
+  }, [donorDraft, donorPool]);
 
   function go(next: Filters, page = 1) {
     const search: ListSearch = {
@@ -172,8 +182,12 @@ export function DonationBrowser({
                   onChange={(event) => {
                     setDonorDraft(event.target.value);
                     setDonorOpen(true);
+                    loadDonors();
                   }}
-                  onFocus={() => setDonorOpen(true)}
+                  onFocus={() => {
+                    setDonorOpen(true);
+                    loadDonors();
+                  }}
                   onBlur={() => window.setTimeout(() => setDonorOpen(false), 120)}
                 />
                 {donorOpen && suggestions.length > 0 ? (

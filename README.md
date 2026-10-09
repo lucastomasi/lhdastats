@@ -64,3 +64,9 @@ El draft de Origin de esta conversación es git privado de Cursor. **Vercel no s
 - `data/donations.json` ~12 MB. El build no lo mete en el bundle de JS: se copia al serverless y se parsea una vez por instancia (en memoria).
 - Hobby de Vercel: cold start + parseo del JSON tiene que entrar en el timeout de la función (suele alcanzar; el CSV completo de ~40k filas es lo más pesado).
 - Kick se consulta en runtime con timeout de 4 s; si falla, el archivo igual carga.
+## Parámetros de URL (home)
+
+- Recorte global de estadísticas: `sw` (todo|hoy|ayer|semana|mes|ultimo|AAAA-MM), `sfrom`, `sto` (AAAA-MM-DD), `scur` (ars|usd).
+- Concentración (hereda el recorte global salvo que se sobrescriba): `cut`, `tips`, `upto`, `over`, `reps`, `cwhen` (`todo` = sin fechas), `cfrom`, `cto`, `ccur`, `cdev`.
+- Buscador: `q` (sin mayúsculas/acentos, `"frase"`, `-excluir`), `donor`, `min`/`max` (ARS), `minusd`/`maxusd`, `when`/`from`/`to`, `conduct`, `has` (link,youtube,vacio,privado), `dom` (sitio del link), `yt` (id de video), `dev` (in|out|only), `cur`, `sort` (reciente|antigua|mayor|menor|donante|aporte), `page`. `/api/export` acepta los mismos filtros.
+- Cada desplegable de estadísticas carga su detalle bajo demanda (`getDrill`): aportes paginados de a 10, top donantes y link al buscador con el filtro equivalente.

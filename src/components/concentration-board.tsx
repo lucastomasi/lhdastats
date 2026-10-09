@@ -89,6 +89,14 @@ export function ConcentrationBoard({
     });
   }
 
+  const moreSearch: ListSearch = {
+    ...scopeKeep(baseSearch),
+    sort: "aporte",
+    dev: params.refunds === "in" ? "in" : params.refunds,
+    ...(params.when && params.when !== "todo" ? { when: params.when } : {}),
+    ...(params.from ? { from: params.from } : {}),
+    ...(params.to ? { to: params.to } : {}),
+  };
   const underSearch = { ...concentrationBandSearch(params, "under", scope), ...scopeKeep(baseSearch) };
   const overSearch = { ...concentrationBandSearch(params, "over", scope), ...scopeKeep(baseSearch) };
 
@@ -241,7 +249,7 @@ export function ConcentrationBoard({
             value={formatCount(cut.donorCount)}
             text="personas, de mayor a menor aporte, con el % acumulado"
           >
-            <DonorTable donors={cut.donors} money={money} />
+            <DonorTable donors={cut.donors} total={cut.donorCount} money={money} more={moreSearch} />
           </Disclosure>
         ))}
 
@@ -289,9 +297,9 @@ export function ConcentrationBoard({
         <Disclosure
           kicker={`Recurrentes, ${formatCount(params.reps)} o más`}
           value={formatPct(report.recurrent.donorShare)}
-          text={`${formatPct(report.recurrent.amountShare)} del monto · ${formatCount(report.recurrent.donors.length)} personas`}
+          text={`${formatPct(report.recurrent.amountShare)} del monto · ${formatCount(report.recurrent.donorCount)} personas`}
         >
-          <DonorTable donors={report.recurrent.donors} money={money} byCount />
+          <DonorTable donors={report.recurrent.donors} total={report.recurrent.donorCount} money={money} more={moreSearch} byCount />
         </Disclosure>
 
         <Disclosure
@@ -384,10 +392,13 @@ function Disclosure({
 
 function DonorTable({
   donors,
-  money,
+  total,
+  more,
   byCount,
 }: {
   donors: ConcentrationDonor[];
+  total: number;
+  more: ListSearch;
   money: (value: number) => string;
   byCount?: boolean;
 }) {
@@ -428,11 +439,27 @@ function DonorTable({
           </tbody>
         </table>
       </div>
-      {donors.length > PREVIEW ? (
-        <div className="px-5 py-3">
-          <button type="button" className={buttonClass("ghost", "h-9 px-3")} onClick={() => setOpen((value) => !value)}>
-            {open ? "Ver menos" : `Ver los ${formatCount(donors.length)}`}
-          </button>
+      {donors.length > PREVIEW || total > donors.length ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
+          {donors.length > PREVIEW ? (
+            <button type="button" className={buttonClass("ghost", "h-9 px-3")} onClick={() => setOpen((value) => !value)}>
+              {open
+                ? "Ver menos"
+                : total > donors.length
+                  ? `Ver los primeros ${formatCount(donors.length)} de ${formatCount(total)}`
+                  : `Ver los ${formatCount(donors.length)}`}
+            </button>
+          ) : null}
+          {total > donors.length ? (
+            <Link
+              to="/"
+              search={more}
+              hash="archivo"
+              className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Resto en el buscador (quienes más aportaron) →
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>
