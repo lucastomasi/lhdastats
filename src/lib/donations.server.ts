@@ -16,6 +16,8 @@ import {
 } from "./archive";
 import { STOP_WORDS } from "./stopwords";
 import { canonicalKey } from "./identities";
+import { KICK_GIFTS } from "./chat-board";
+import { classifyMessage, CONDUCT_ORDER, hasLaugh, youtubeIds, type ConductKey } from "./conduct";
 
 type RawDonation = Omit<Donation, "devuelta" | "devolucion">;
 
@@ -261,6 +263,12 @@ function build(): Cache {
     if (row.id > current.last.id) current.last = row;
   }
 
+  const kickUsdByKey = new Map<string, number>();
+  for (const gift of KICK_GIFTS) {
+    if (!gift.archiveName) continue;
+    kickUsdByKey.set(canonicalKey(fold(gift.archiveName)), gift.gifts * 5);
+  }
+
   const donorProfiles: DonorProfile[] = [...donors.entries()].map(([nameKey, donor]) => {
     const aliases = [...donor.variants.entries()]
       .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length || a[0].localeCompare(b[0], "es"))
@@ -272,6 +280,7 @@ function build(): Cache {
       count: donor.count,
       ars: donor.ars,
       usd: donor.usd,
+      kickGiftUsd: kickUsdByKey.get(nameKey) ?? 0,
       first: toPublic(donor.first),
       last: toPublic(donor.last),
       biggest: toPublic(donor.biggest ?? donor.first),
@@ -318,11 +327,34 @@ function build(): Cache {
 function mine(rows: IndexedDonation[], profiles: DonorProfile[], totalArs: number, totalUsd: number, counted: number): Mining {
   const amounts: number[] = [];
   const modes = new Map<number, number>();
+  const fx = new Map<number, number>();
+  const typical = new Set([100, 200, 500, 1000]);
+  let typicalCount = 0;
+  let under200 = 0;
+  let under200Usd = 0;
+  let from5000 = 0;
+  let from5000Usd = 0;
+  const publicRows: IndexedDonation[] = [];
+
   for (const row of rows) {
     if (row.devuelta) continue;
     amounts.push(row.monto_ars);
     const key = Math.round(row.monto_ars);
     modes.set(key, (modes.get(key) ?? 0) + 1);
+    if (typical.has(key)) typicalCount += 1;
+    if (row.monto_ars <= 200) {
+      under200 += 1;
+      under200Usd += row.monto_usd;
+    }
+    if (row.monto_ars >= 5000) {
+      from5000 += 1;
+      from5000Usd += row.monto_usd;
+    }
+    if (row.monto_usd > 0) {
+      const rate = Math.round(row.monto_ars / row.monto_usd);
+      fx.set(rate, (fx.get(rate) ?? 0) + 1);
+    }
+    if (!row.privado) publicRows.push(row);
   }
   amounts.sort((a, b) => a - b);
   const mid = Math.floor(amounts.length / 2);
@@ -342,18 +374,43 @@ function mine(rows: IndexedDonation[], profiles: DonorProfile[], totalArs: numbe
     }
   }
 
+  let modalFx = 0;
+  let modalFxCount = 0;
+  for (const [rate, count] of fx) {
+    if (count > modalFxCount || (count === modalFxCount && rate < modalFx)) {
+      modalFx = rate;
+      modalFxCount = count;
+    }
+  }
+
   let repeatDonors = 0;
   let repeatDonations = 0;
   let rawNames = 0;
+  let heavyDonors = 0;
+  let heavyUsd = 0;
   for (const donor of profiles) {
     rawNames += donor.aliases.length;
     if (donor.count > 1) {
       repeatDonors += 1;
       repeatDonations += donor.count;
     }
+    if (donor.count >= 10) {
+      heavyDonors += 1;
+      heavyUsd += donor.usd;
+    }
   }
 
   const byUsd = [...profiles].sort((a, b) => b.usd - a.usd);
+  const donorsUntil = (share: number) => {
+    let usd = 0;
+    let n = 0;
+    for (const donor of byUsd) {
+      usd += donor.usd;
+      n += 1;
+      if (totalUsd > 0 && usd >= totalUsd * share) return n;
+    }
+    return n;
+  };
   const shareOf = (fraction: number) => {
     const donors = Math.max(1, Math.round(profiles.length * fraction));
     let usd = 0;
@@ -362,6 +419,125 @@ function mine(rows: IndexedDonation[], profiles: DonorProfile[], totalArs: numbe
   };
   const top = shareOf(0.01);
   const ten = byUsd.slice(0, Math.min(10, byUsd.length)).reduce((sum, donor) => sum + donor.usd, 0);
+
+  const buckets = new Map<ConductKey, { texts: number; ars: number; usd: number }>();
+  for (const item of CONDUCT_ORDER) buckets.set(item.key, { texts: 0, ars: 0, usd: 0 });
+  const habit = new Map<string, Map<ConductKey, number>>();
+  const laughOwn = new Map<string, { texts: number; laughs: number }>();
+  const named = new Map<string, number>();
+  const namedLaugh = new Map<string, number>();
+  const clips = new Map<string, { count: number; usd: number }>();
+  let youtubeLinks = 0;
+
+  const aliasToKey = new Map<string, string>();
+  const nameByKey = new Map<string, string>();
+  for (const donor of profiles) {
+    if (donor.count < 8) continue;
+    nameByKey.set(donor.nameKey, donor.nombre);
+    for (const alias of donor.aliases) {
+      const token = fold(alias);
+      if (token.length < 5) continue;
+      aliasToKey.set(token, donor.nameKey);
+    }
+  }
+
+  for (const row of publicRows) {
+    const kind = classifyMessage(row.mensaje);
+    const bucket = buckets.get(kind);
+    if (bucket) {
+      bucket.texts += 1;
+      bucket.ars += row.monto_ars;
+      bucket.usd += row.monto_usd;
+    }
+    const byKind = habit.get(row.nameKey) ?? new Map<ConductKey, number>();
+    byKind.set(kind, (byKind.get(kind) ?? 0) + 1);
+    habit.set(row.nameKey, byKind);
+
+    const laughs = laughOwn.get(row.nameKey) ?? { texts: 0, laughs: 0 };
+    laughs.texts += 1;
+    if (hasLaugh(row.mensaje)) laughs.laughs += 1;
+    laughOwn.set(row.nameKey, laughs);
+
+    const ids = youtubeIds(row.mensaje);
+    youtubeLinks += ids.length;
+    for (const id of ids) {
+      const clip = clips.get(id) ?? { count: 0, usd: 0 };
+      clip.count += 1;
+      clip.usd += row.monto_usd;
+      clips.set(id, clip);
+    }
+
+    const tokens = fold(row.mensaje).match(/[a-z0-9_]{5,}/g) ?? [];
+    const seen = new Set<string>();
+    const laughing = hasLaugh(row.mensaje);
+    for (const token of tokens) {
+      const key = aliasToKey.get(token);
+      if (!key || key === row.nameKey || seen.has(key)) continue;
+      seen.add(key);
+      named.set(key, (named.get(key) ?? 0) + 1);
+      if (laughing) namedLaugh.set(key, (namedLaugh.get(key) ?? 0) + 1);
+    }
+  }
+
+  const publicCount = publicRows.length;
+  const conduct = CONDUCT_ORDER.map(({ key, label }) => {
+    const bucket = buckets.get(key) ?? { texts: 0, ars: 0, usd: 0 };
+    return {
+      key,
+      label,
+      texts: bucket.texts,
+      textShare: publicCount > 0 ? bucket.texts / publicCount : 0,
+      usdShare: totalUsd > 0 ? bucket.usd / totalUsd : 0,
+      meanArs: bucket.texts > 0 ? bucket.ars / bucket.texts : 0,
+    };
+  });
+
+  let regularWriters = 0;
+  let clipHabitDonors = 0;
+  let storyHabitDonors = 0;
+  for (const [, byKind] of habit) {
+    let total = 0;
+    let topKey: ConductKey = "story";
+    let topCount = 0;
+    for (const [key, n] of byKind) {
+      total += n;
+      if (n > topCount) {
+        topKey = key;
+        topCount = n;
+      }
+    }
+    if (total < 8) continue;
+    regularWriters += 1;
+    if (topKey === "link") clipHabitDonors += 1;
+    if (topKey === "story") storyHabitDonors += 1;
+  }
+
+  const namedRows = (map: Map<string, number>) =>
+    [...map.entries()]
+      .map(([key, count]) => ({ key, nombre: nameByKey.get(key) ?? key, count }))
+      .sort((a, b) => b.count - a.count || a.nombre.localeCompare(b.nombre, "es"))
+      .slice(0, 8);
+
+  const ownLaugh = [...laughOwn.entries()]
+    .filter(([, stats]) => stats.texts >= 20)
+    .map(([key, stats]) => ({
+      key,
+      nombre: nameByKey.get(key) ?? profiles.find((donor) => donor.nameKey === key)?.nombre ?? key,
+      share: stats.texts > 0 ? stats.laughs / stats.texts : 0,
+      texts: stats.texts,
+    }))
+    .sort((a, b) => b.share - a.share || b.texts - a.texts)
+    .slice(0, 8);
+
+  const youtube = [...clips.entries()]
+    .map(([id, clip]) => ({
+      id,
+      count: clip.count,
+      usd: clip.usd,
+      href: `https://www.youtube.com/watch?v=${id}`,
+    }))
+    .sort((a, b) => b.count - a.count || b.usd - a.usd)
+    .slice(0, 12);
 
   return {
     medianArs,
@@ -382,6 +558,28 @@ function mine(rows: IndexedDonation[], profiles: DonorProfile[], totalArs: numbe
       { label: "25%", ...shareOf(0.25) },
       { label: "50%", ...shareOf(0.5) },
     ].map(({ label, donors, usdShare }) => ({ label, donors, usdShare })),
+    halfUsdDonors: donorsUntil(0.5),
+    eightyUsdDonors: donorsUntil(0.8),
+    typicalAmountsShare: counted > 0 ? typicalCount / counted : 0,
+    under200TextShare: counted > 0 ? under200 / counted : 0,
+    under200UsdShare: totalUsd > 0 ? under200Usd / totalUsd : 0,
+    from5000TextShare: counted > 0 ? from5000 / counted : 0,
+    from5000UsdShare: totalUsd > 0 ? from5000Usd / totalUsd : 0,
+    heavyDonorShare: profiles.length > 0 ? heavyDonors / profiles.length : 0,
+    heavyUsdShare: totalUsd > 0 ? heavyUsd / totalUsd : 0,
+    modalFx,
+    modalFxShare: counted > 0 ? modalFxCount / counted : 0,
+    conduct,
+    clipHabitDonors,
+    storyHabitDonors,
+    regularWriters,
+    namedByOthers: namedRows(named),
+    namedWithLaugh: namedRows(namedLaugh),
+    ownLaugh,
+    youtube,
+    youtubeLinks,
+    youtubeUnique: clips.size,
+    youtubeOnce: [...clips.values()].filter((clip) => clip.count === 1).length,
   };
 }
 

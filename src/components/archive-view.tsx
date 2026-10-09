@@ -33,6 +33,212 @@ export function ArchiveSummary({ meta }: { meta: ArchiveMeta }) {
   );
 }
 
+export function ConcentrationBoard({ meta }: { meta: ArchiveMeta }) {
+  const mining = meta.mining;
+  const facts = [
+    { kicker: "50% del monto", value: formatCount(mining.halfUsdDonors), text: "personas" },
+    { kicker: "80% del monto", value: formatCount(mining.eightyUsdDonors), text: "personas" },
+    {
+      kicker: "Montos 100, 200, 500 y 1.000",
+      value: formatPct(mining.typicalAmountsShare),
+      text: "de los aportes",
+    },
+    {
+      kicker: "Hasta $ 200",
+      value: formatPct(mining.under200TextShare),
+      text: `${formatPct(mining.under200UsdShare)} del monto en US$`,
+    },
+    {
+      kicker: "Desde $ 5.000",
+      value: formatPct(mining.from5000TextShare),
+      text: `${formatPct(mining.from5000UsdShare)} del monto en US$`,
+    },
+    {
+      kicker: "Recurrentes, 10 o más",
+      value: formatPct(mining.heavyDonorShare),
+      text: `${formatPct(mining.heavyUsdShare)} del monto en US$`,
+    },
+    {
+      kicker: "Mediana",
+      value: formatArs(mining.medianArs),
+      text: `moda ${formatArs(mining.modeArs)}`,
+    },
+    {
+      kicker: "Tipo de cambio modal",
+      value: formatArs(mining.modalFx),
+      text: `${formatPct(mining.modalFxShare)} de las filas`,
+    },
+  ];
+  return (
+    <section className="space-y-4">
+      <SectionHead
+        kicker="Concentración"
+        title="Quién sostiene el archivo"
+        text="Personas, no grafías. Los montos típicos son los de siempre: 100, 200, 500 y 1.000 pesos."
+      />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {facts.map((fact) => (
+          <Finding key={fact.kicker} kicker={fact.kicker} value={fact.value} text={fact.text} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ConductReport({ meta }: { meta: ArchiveMeta }) {
+  const mining = meta.mining;
+  return (
+    <section id="conducta" className="space-y-4">
+      <SectionHead
+        kicker="Conducta"
+        title="Qué hace la audiencia cuando escribe"
+        text="Cada mensaje público entra en una sola categoría. El monto sigue al tipo de texto. Quien trae un clip paga más; preguntar o hablar de política es la franja barata."
+      />
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[36rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs tracking-wide text-muted-foreground uppercase">
+                <th className="px-5 py-3 font-medium">Conducta</th>
+                <th className="px-3 py-3 font-medium">Textos</th>
+                <th className="px-3 py-3 font-medium">Del monto</th>
+                <th className="px-5 py-3 font-medium">Promedio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mining.conduct.map((row) => (
+                <tr key={row.key} className="border-t border-border/80">
+                  <td className="px-5 py-3 font-medium">{row.label}</td>
+                  <td className="px-3 py-3 tabular-nums">{formatPct(row.textShare)}</td>
+                  <td className="px-3 py-3 tabular-nums">{formatPct(row.usdShare)}</td>
+                  <td className="px-5 py-3 tabular-nums text-muted-foreground">
+                    {row.key === "short" ? "—" : formatArs(row.meanArs)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="px-5 py-4 text-sm leading-6 text-muted-foreground">
+          De {formatCount(mining.regularWriters)} personas que escriben seguido, {formatCount(mining.clipHabitDonors)} se
+          dedican a mandar clips y {formatCount(mining.storyHabitDonors)} a contar. Casi nadie tiene la puteada como
+          costumbre: aparece, pero no es un rol.
+        </p>
+      </Card>
+    </section>
+  );
+}
+
+export function MentionBoard({ meta }: { meta: ArchiveMeta }) {
+  const mining = meta.mining;
+  return (
+    <section id="menciones" className="space-y-4">
+      <SectionHead
+        kicker="Menciones"
+        title="A quién nombran"
+        text="Nombres del archivo que aparecen en mensajes de otros. La risa es otra métrica: quién provoca el chiste y quién se ríe de lo propio."
+      />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <NameList title="Nombrado por otros" rows={mining.namedByOthers} unit="veces" />
+        <NameList title="Nombrado con risa" rows={mining.namedWithLaugh} unit="veces" />
+        <Card>
+          <header className="space-y-1 px-5 pt-5 pb-3">
+            <h2 className="text-xl tracking-tight">Texto propio con risa</h2>
+          </header>
+          <ol>
+            {mining.ownLaugh.map((row, index) => (
+              <li key={row.key} className="border-t border-border/80">
+                <Link
+                  to="/donante/$nombre"
+                  params={{ nombre: row.nombre }}
+                  className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 hover:bg-muted/70"
+                >
+                  <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                  <span className="truncate font-medium">{row.nombre}</span>
+                  <span className="text-sm font-medium tabular-nums">{formatPct(row.share)}</span>
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+function NameList({
+  title,
+  rows,
+  unit,
+}: {
+  title: string;
+  rows: { key: string; nombre: string; count: number }[];
+  unit: string;
+}) {
+  return (
+    <Card>
+      <header className="space-y-1 px-5 pt-5 pb-3">
+        <h2 className="text-xl tracking-tight">{title}</h2>
+      </header>
+      <ol>
+        {rows.map((row, index) => (
+          <li key={row.key} className="border-t border-border/80">
+            <Link
+              to="/donante/$nombre"
+              params={{ nombre: row.nombre }}
+              className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 hover:bg-muted/70"
+            >
+              <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+              <span className="truncate font-medium">{row.nombre}</span>
+              <span className="text-sm font-medium tabular-nums">
+                {formatCount(row.count)}
+                <span className="ml-1 text-xs font-normal text-muted-foreground">{unit}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
+}
+
+export function YoutubeBoard({ meta }: { meta: ArchiveMeta }) {
+  const mining = meta.mining;
+  return (
+    <section id="youtube" className="space-y-4">
+      <SectionHead
+        kicker="YouTube"
+        title="Clips que viajan en los aportes"
+        text="US$ asociado: suma de los aportes que incluyeron el video. El título no está en Ceneka; el link sí."
+      />
+      <p className="text-sm text-muted-foreground">
+        {formatCount(mining.youtubeLinks)} enlaces · {formatCount(mining.youtubeOnce)} de {formatCount(mining.youtubeUnique)} una sola vez
+      </p>
+      <Card>
+        <ol>
+          {mining.youtube.map((clip, index) => (
+            <li key={clip.id} className="border-t border-border/80 first:border-t-0">
+              <a
+                href={clip.href}
+                target="_blank"
+                rel="noreferrer"
+                className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto] items-center gap-3 px-5 py-3 hover:bg-muted/70"
+              >
+                <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{clip.id}</span>
+                  <span className="block text-xs text-muted-foreground">{clip.count} veces</span>
+                </span>
+                <span className="text-sm font-medium tabular-nums">{formatUsd(clip.usd)}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      </Card>
+    </section>
+  );
+}
+
 export function MiningReport({ meta }: { meta: ArchiveMeta }) {
   const mining = meta.mining;
   const peak = Math.max(...mining.pareto.map((step) => step.usdShare), 0.01);
@@ -325,7 +531,9 @@ export function ArchiveDetails({ meta }: { meta: ArchiveMeta }) {
           title="Quién más aportó"
           description="Suma del equivalente en dólares, sin las devoluciones."
           rows={meta.topByUsd}
-          metric={(row) => formatUsd(row.usd)}
+          metric={(row) =>
+            row.kickGiftUsd > 0 ? `${formatUsd(row.usd)} +${formatUsd(row.kickGiftUsd)}` : formatUsd(row.usd)
+          }
           extra={(row) => `${formatCount(row.count)} donaciones · ${formatArs(row.ars)}`}
         />
         <DonorBoard

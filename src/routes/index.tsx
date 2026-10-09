@@ -1,5 +1,5 @@
 import { createFileRoute, stripSearchParams } from "@tanstack/react-router";
-import { ArchiveDetails, ArchiveSummary, KickBanner, LedgerBoards, MiningReport, PeriodChart, PodcastShelf, RefundNote, SiteFooter, WordCloud } from "@/components/archive-view";
+import { ArchiveDetails, ArchiveSummary, ConcentrationBoard, ConductReport, KickBanner, LedgerBoards, MentionBoard, MiningReport, PeriodChart, PodcastShelf, RefundNote, SiteFooter, WordCloud, YoutubeBoard } from "@/components/archive-view";
 import { BrowserSkeleton, DonationBrowser } from "@/components/donation-browser";
 import { EMPTY_SEARCH, parseListSearch, toFilters, type ListSearch } from "@/lib/archive";
 import { getArchivePage, getKick, getPodcast } from "@/lib/archive.functions";
@@ -44,11 +44,20 @@ function Home() {
             <a href="#hallazgos" className="text-primary underline-offset-2 hover:underline">
               Hallazgos
             </a>
+            <a href="#conducta" className="text-primary underline-offset-2 hover:underline">
+              Conducta
+            </a>
+            <a href="#menciones" className="text-primary underline-offset-2 hover:underline">
+              Menciones
+            </a>
             <a href="#tiempo" className="text-primary underline-offset-2 hover:underline">
               Cuándo
             </a>
             <a href="#lenguaje" className="text-primary underline-offset-2 hover:underline">
               Lenguaje
+            </a>
+            <a href="#youtube" className="text-primary underline-offset-2 hover:underline">
+              YouTube
             </a>
             <a href="#podcast" className="text-primary underline-offset-2 hover:underline">
               En vivo
@@ -65,7 +74,10 @@ function Home() {
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-10 px-4 py-8 md:py-10">
         <ArchiveSummary meta={meta} />
+        <ConcentrationBoard meta={meta} />
         <MiningReport meta={meta} />
+        <ConductReport meta={meta} />
+        <MentionBoard meta={meta} />
         <RefundNote meta={meta} />
         <div id="tiempo">
           <PeriodChart meta={meta} />
@@ -73,6 +85,7 @@ function Home() {
         <div id="lenguaje">
           <WordCloud meta={meta} />
         </div>
+        <YoutubeBoard meta={meta} />
         <PodcastShelf videos={podcast} kick={kick} />
         <LedgerBoards />
         <div id="archivo" className="scroll-mt-6 space-y-4">

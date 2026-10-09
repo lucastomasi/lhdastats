@@ -17,6 +17,7 @@ export type DonorStat = {
   count: number;
   ars: number;
   usd: number;
+  kickGiftUsd: number;
 };
 
 export type Bracket = {
@@ -54,6 +55,35 @@ export type ParetoStep = {
   usdShare: number;
 };
 
+export type ConductRow = {
+  key: string;
+  label: string;
+  texts: number;
+  textShare: number;
+  usdShare: number;
+  meanArs: number;
+};
+
+export type NamedRow = {
+  key: string;
+  nombre: string;
+  count: number;
+};
+
+export type LaughHabit = {
+  key: string;
+  nombre: string;
+  share: number;
+  texts: number;
+};
+
+export type YoutubeClip = {
+  id: string;
+  count: number;
+  usd: number;
+  href: string;
+};
+
 export type Mining = {
   medianArs: number;
   meanArs: number;
@@ -67,6 +97,28 @@ export type Mining = {
   modeArs: number;
   modeCount: number;
   pareto: ParetoStep[];
+  halfUsdDonors: number;
+  eightyUsdDonors: number;
+  typicalAmountsShare: number;
+  under200TextShare: number;
+  under200UsdShare: number;
+  from5000TextShare: number;
+  from5000UsdShare: number;
+  heavyDonorShare: number;
+  heavyUsdShare: number;
+  modalFx: number;
+  modalFxShare: number;
+  conduct: ConductRow[];
+  clipHabitDonors: number;
+  storyHabitDonors: number;
+  regularWriters: number;
+  namedByOthers: NamedRow[];
+  namedWithLaugh: NamedRow[];
+  ownLaugh: LaughHabit[];
+  youtube: YoutubeClip[];
+  youtubeLinks: number;
+  youtubeUnique: number;
+  youtubeOnce: number;
 };
 
 export type ArchiveMeta = {

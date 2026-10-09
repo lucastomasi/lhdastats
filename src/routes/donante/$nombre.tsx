@@ -98,6 +98,30 @@ function DonorPage() {
   );
 }
 
+function DonorSideNotes({ nameKey }: { nameKey: string }) {
+  const points = POINT_BOARD.find((row) => row.archiveName && foldKey(row.archiveName) === nameKey);
+  const gifts = KICK_GIFTS.find((row) => row.archiveName && foldKey(row.archiveName) === nameKey);
+  if (!points && !gifts) return null;
+  return (
+    <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
+      {points ? (
+        <li>
+          <span className="font-medium text-foreground">{formatCount(points.points)}</span> palancoins
+        </li>
+      ) : null}
+      {gifts ? (
+        <li>
+          <span className="font-medium text-foreground">{formatCount(gifts.gifts)}</span> regalos · {formatUsd(gifts.gifts * 5)}
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+function foldKey(name: string) {
+  return name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
 function MissingDonor() {
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-4 py-24 text-center">
