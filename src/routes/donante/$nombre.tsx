@@ -2,7 +2,7 @@ import { createFileRoute, Link, stripSearchParams } from "@tanstack/react-router
 import { SiteFooter } from "@/components/archive-view";
 import { BrowserSkeleton, DonationBrowser } from "@/components/donation-browser";
 import { Badge, Card } from "@/components/ui";
-import { EMPTY_SEARCH, parseListSearch, toFilters, type ListSearch } from "@/lib/archive";
+import { EMPTY_SEARCH, paramSearch, parseListSearch, toFilters, type ListSearch } from "@/lib/archive";
 import { getDonorPage } from "@/lib/archive.functions";
 import { KICK_GIFTS, POINT_BOARD } from "@/lib/chat-board";
 import { formatArs, formatCount, formatUsd, formatWhen } from "@/lib/format";
@@ -29,7 +29,7 @@ function DonorPage() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border/80 bg-card/70">
         <div className="mx-auto max-w-6xl px-4 py-10 md:py-14">
-          <Link to="/" className="text-sm text-primary underline-offset-2 hover:underline">
+          <Link to="/" search={paramSearch(filters)} className="text-sm text-primary underline-offset-2 hover:underline">
             ← Todas las donaciones
           </Link>
           <p className="mt-5 text-xs font-semibold tracking-widest text-primary uppercase">Ficha del donante</p>
@@ -49,7 +49,7 @@ function DonorPage() {
           <p className="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">
             {formatCount(donor.count)} aportes públicos · {formatArs(donor.ars)} · {formatUsd(donor.usd)}
           </p>
-          <DonorSideNotes nameKey={donor.nameKey} />
+          <DonorSideNotes nameKey={donor.nameKey} giftUsd={filters.limits.giftUsd} />
           {donor.refundedCount > 0 ? (
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
               {donor.refundedCount === 1
@@ -96,6 +96,29 @@ function DonorPage() {
       <SiteFooter source="https://ceneka.net/losherederosdealberdi" />
     </div>
   );
+}
+
+function DonorSideNotes({ nameKey, giftUsd }: { nameKey: string; giftUsd: number }) {
+  const points = POINT_BOARD.find((row) => sameDonor(row.archiveName, nameKey));
+  const gifts = KICK_GIFTS.find((row) => sameDonor(row.archiveName, nameKey));
+  if (!points && !gifts) return null;
+  return (
+    <ul className="mt-4 flex flex-wrap gap-2">
+      {points ? <li><Badge>{formatCount(points.points)} palancoins</Badge></li> : null}
+      {gifts ? (
+        <li>
+          <Badge>
+            {formatCount(gifts.gifts)} regalos · {formatUsd(gifts.gifts * giftUsd)}
+          </Badge>
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+function sameDonor(archiveName: string | null, nameKey: string) {
+  if (!archiveName) return false;
+  return archiveName.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase() === nameKey;
 }
 
 function MissingDonor() {

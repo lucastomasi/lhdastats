@@ -1,12 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { FormEvent } from "react";
+import type { FormEvent, KeyboardEvent } from "react";
 import { MessageText } from "@/components/message-text";
 import { Badge, buttonClass, fieldClass } from "@/components/ui";
 import {
-  PAGE_SIZE,
+  DEFAULT_LIMITS,
   donorHref,
   exportHref,
   filtersToSearch,
+  paramSearch,
   type Donation,
   type Filters,
   type ListSearch,
@@ -19,21 +20,24 @@ export function DonationBrowser({
   result,
   mode,
   donorName,
+  dense = false,
 }: {
   filters: Filters;
   result: PageResult;
   mode: "home" | "donor";
   donorName?: string;
+  dense?: boolean;
 }) {
   const navigate = useNavigate();
   const includeDonor = mode === "home";
   const action = mode === "donor" && donorName ? donorHref(donorName) : "/";
   const active = Boolean(filters.q || (includeDonor && filters.donor) || filters.min !== null || filters.sort !== "reciente");
-  const from = result.total === 0 ? 0 : (result.page - 1) * PAGE_SIZE + 1;
-  const to = Math.min(result.page * PAGE_SIZE, result.total);
+  const pageSize = filters.limits.pageSize;
+  const from = result.total === 0 ? 0 : (result.page - 1) * pageSize + 1;
+  const to = Math.min(result.page * pageSize, result.total);
 
   function go(next: Partial<ListSearch>) {
-    const search: ListSearch = {};
+    const search: ListSearch = { ...paramSearch(filters) };
     const q = next.q ?? "";
     const donor = includeDonor ? (next.donor ?? "") : "";
     const sort = next.sort ?? "reciente";
@@ -43,6 +47,10 @@ export function DonationBrowser({
     if (sort !== "reciente") search.sort = sort;
     if (page > 1) search.page = page;
     if (next.min) search.min = next.min;
+    if (next.filas) {
+      if (next.filas === DEFAULT_LIMITS.pageSize) delete search.filas;
+      else search.filas = next.filas;
+    }
     if (mode === "donor" && donorName) {
       navigate({ to: "/donante/$nombre", params: { nombre: donorName }, search });
     } else {
@@ -65,7 +73,95 @@ export function DonationBrowser({
     });
   }
 
-  return (
+  function setPageSize(raw: string, input: HTMLInputElement) {
+    const n = Number(raw.replace(/\D/g, ""));
+    if (!Number.isFinite(n)) return;
+    const filas = Math.min(100, Math.max(10, Math.round(n)));
+    if (filas === pageSize) {
+      input.value = String(pageSize);
+      return;
+    }
+    go({
+      q: filters.q,
+      donor: filters.donor,
+      sort: filters.sort,
+      min: filters.min ?? undefined,
+      page: 1,
+      filas,
+    });
+  }
+
+  function onPageSizeKey(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    setPageSize(event.currentTarget.value, event.currentTarget);
+  }
+
+  const pageSizeField = (
+    <input
+      aria-label="Filas por página"
+      key={pageSize}
+      defaultValue={pageSize}
+      inputMode="numeric"
+      onKeyDown={onPageSizeKey}
+      className="h-6 w-12 rounded-md border border-input bg-background px-1 text-right text-xs tabular-nums outline-none focus-visible:border-ring"
+    />
+  );
+
+  return dense ? (
+    <section className="flex h-full min-h-0 flex-col gap-2">
+      <form action={action} method="get" onSubmit={onSubmit} className="grid shrink-0 grid-cols-[minmax(0,1fr)_6.5rem_auto] gap-1.5">
+        <input name="q" defaultValue={filters.q} placeholder="Nombre o mensaje" className={`${fieldClass} h-8`} />
+        <select
+          name="sort"
+          defaultValue={filters.sort}
+          onChange={(event) => event.currentTarget.form?.requestSubmit()}
+          className={`${fieldClass} h-8 px-2 text-xs`}
+        >
+          <option value="reciente">Recientes</option>
+          <option value="antigua">Antiguas</option>
+          <option value="mayor">Mayor</option>
+          <option value="menor">Menor</option>
+        </select>
+        {filters.min !== null ? <input type="hidden" name="min" value={filters.min} /> : null}
+        {includeDonor && filters.donor ? <input type="hidden" name="donor" value={filters.donor} /> : null}
+        <Kept filters={filters} />
+        <button type="submit" className={buttonClass("primary", "h-8 px-3")}>
+          Buscar
+        </button>
+      </form>
+      <div className="flex shrink-0 items-center justify-between gap-2 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1 tabular-nums">
+          {result.total === 0 ? "Sin resultados" : `${formatCount(result.total)} registros`}
+          {pageSizeField}
+          <span>por página</span>
+        </p>
+        <a href={exportHref(filters)} className="font-medium text-primary underline-offset-2 hover:underline">
+          Exportar CSV
+        </a>
+      </div>
+      <ul className="min-h-0 flex-1 divide-y divide-border overflow-auto rounded-lg bg-background ring-1 ring-foreground/10">
+        {result.rows.map((row) => (
+          <li key={row.id} className="px-2 py-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <Link
+                to="/donante/$nombre"
+                params={{ nombre: row.nombre }}
+                search={paramSearch(filters)}
+                className="truncate text-sm font-medium hover:text-primary"
+              >
+                {row.nombre}
+              </Link>
+              <Amount row={row} compact />
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {row.privado ? "Mensaje privado" : row.mensaje || "Sin mensaje"}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : (
     <section className="space-y-4">
       <form
         action={action}
@@ -97,6 +193,7 @@ export function DonationBrowser({
           />
         </label>
         {includeDonor && filters.donor ? <input type="hidden" name="donor" value={filters.donor} /> : null}
+        <Kept filters={filters} />
         <div className="flex items-end">
           <button type="submit" className={buttonClass("primary", "w-full md:w-auto")}>
             Filtrar
@@ -106,13 +203,15 @@ export function DonationBrowser({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <p className="text-muted-foreground">
+          <p className="flex items-center gap-1 text-muted-foreground">
             {result.total === 0
               ? "Sin resultados"
               : `${formatCount(from)}–${formatCount(to)} de ${formatCount(result.total)}`}
+            {pageSizeField}
+            <span>por página</span>
           </p>
           {includeDonor && filters.donor ? (
-            <Link to="/donante/$nombre" params={{ nombre: filters.donor }}>
+            <Link to="/donante/$nombre" params={{ nombre: filters.donor }} search={paramSearch(filters)}>
               <Badge tone="outline">Donante: {filters.donor}</Badge>
             </Link>
           ) : null}
@@ -121,12 +220,13 @@ export function DonationBrowser({
               <Link
                 to="/donante/$nombre"
                 params={{ nombre: donorName }}
+                search={paramSearch(filters)}
                 className="text-primary underline-offset-2 hover:underline"
               >
                 Limpiar filtros
               </Link>
             ) : (
-              <Link to="/" className="text-primary underline-offset-2 hover:underline">
+              <Link to="/" search={paramSearch(filters)} className="text-primary underline-offset-2 hover:underline">
                 Limpiar filtros
               </Link>
             )
@@ -153,6 +253,7 @@ export function DonationBrowser({
                   <Link
                     to="/donante/$nombre"
                     params={{ nombre: row.nombre }}
+                    search={paramSearch(filters)}
                     className="font-medium hover:text-primary"
                   >
                     {row.nombre}
@@ -186,7 +287,7 @@ export function DonationBrowser({
                       <p className="text-xs text-muted-foreground">{row.fecha_relativa}</p>
                     </td>
                     <td className="px-4 py-3 align-top font-medium whitespace-normal">
-                      <Link to="/donante/$nombre" params={{ nombre: row.nombre }} className="hover:text-primary">
+                      <Link to="/donante/$nombre" params={{ nombre: row.nombre }} search={paramSearch(filters)} className="hover:text-primary">
                         {row.nombre}
                       </Link>
                     </td>
@@ -238,6 +339,16 @@ function DonationMessage({ row }: { row: Donation }) {
       ) : null}
       {row.privado ? <Badge tone="outline">Mensaje privado</Badge> : <MessageText text={row.mensaje} />}
     </div>
+  );
+}
+
+function Kept({ filters }: { filters: Filters }) {
+  return (
+    <>
+      {Object.entries(paramSearch(filters)).map(([key, value]) =>
+        value === undefined ? null : <input key={key} type="hidden" name={key} value={String(value)} />,
+      )}
+    </>
   );
 }
 
@@ -362,4 +473,3 @@ export function BrowserSkeleton() {
     </div>
   );
 }
-
