@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Badge, Card } from "@/components/ui";
 import type { ArchiveMeta } from "@/lib/archive";
-import { DISCORD_HREF, KICK_GIFTS, POINT_BOARD } from "@/lib/chat-board";
+import { DISCORD_HREF, GIFT_USD, KICK_GIFTS, POINT_BOARD } from "@/lib/chat-board";
 import { formatArs, formatCount, formatScraped, formatUsd } from "@/lib/format";
 import type { KickChannel } from "@/lib/kick";
 import type { PodcastVideo } from "@/lib/podcast";
@@ -93,7 +93,7 @@ function RankTable({
   title: string;
   text: string;
   unit: string;
-  rows: { name: string; value: number; archiveName: string | null; note?: string }[];
+  rows: { name: string; value: number; archiveName: string | null; note?: string; extra?: string }[];
 }) {
   return (
     <Card>
@@ -118,7 +118,10 @@ function RankTable({
               </span>
               <span className="text-right text-sm font-medium tabular-nums">
                 {formatCount(row.value)}
-                <span className="block text-xs font-normal text-muted-foreground">{unit}</span>
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {unit}
+                  {row.extra ? ` · ${row.extra}` : ""}
+                </span>
               </span>
             </>
           );
@@ -168,11 +171,12 @@ export function LedgerBoards() {
         />
         <RankTable
           title="Regalos en Kick"
-          text="Suscripciones regaladas en el canal. raffsody es soylucastomasi."
+          text={`Suscripciones regaladas en el canal, a ${formatUsd(GIFT_USD)} cada una. raffsody es soylucastomasi.`}
           unit="regalos"
           rows={KICK_GIFTS.map((row) => ({
             name: row.name,
             value: row.gifts,
+            extra: formatUsd(row.gifts * GIFT_USD),
             archiveName: row.archiveName,
             note: row.note,
           }))}

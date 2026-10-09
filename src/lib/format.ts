@@ -50,6 +50,12 @@ export function formatPct(share: number) {
   return `${group(pct, digits)}%`;
 }
 
+export function formatTimes(value: number) {
+  const rounded = Math.round(value * 10) / 10;
+  const digits = Number.isInteger(rounded) ? 0 : 1;
+  return `${group(rounded, digits)}×`;
+}
+
 function artParts(iso: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;

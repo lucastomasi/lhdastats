@@ -4,7 +4,7 @@ import { BrowserSkeleton, DonationBrowser } from "@/components/donation-browser"
 import { Badge, Card } from "@/components/ui";
 import { EMPTY_SEARCH, parseListSearch, toFilters, type ListSearch } from "@/lib/archive";
 import { getDonorPage } from "@/lib/archive.functions";
-import { KICK_GIFTS, POINT_BOARD } from "@/lib/chat-board";
+import { GIFT_USD, KICK_GIFTS, POINT_BOARD } from "@/lib/chat-board";
 import { formatArs, formatCount, formatUsd, formatWhen } from "@/lib/format";
 import { KICK_HANDLES } from "@/lib/identities";
 
@@ -119,7 +119,7 @@ function DonorSideNotes({ nameKey }: { nameKey: string }) {
       ) : null}
       {gifts ? (
         <li>
-          <span className="font-medium text-foreground">{formatCount(gifts.gifts)}</span> regalos · {formatUsd(gifts.gifts * 5)}
+          <span className="font-medium text-foreground">{formatCount(gifts.gifts)}</span> regalos · {formatUsd(gifts.gifts * GIFT_USD)}
         </li>
       ) : null}
     </ul>
