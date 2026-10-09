@@ -6,15 +6,15 @@ import {
   concentrationBandSearch,
   concentrationToSearch,
   DEFAULT_CONCENTRATION,
-  filtersToListSearch,
   type ConcentrationDonor,
   type ConcentrationHit,
   type ConcentrationParams,
   type ConcentrationReport,
-  type Filters,
   type ListSearch,
   type MonthOption,
+  type StatsScope,
 } from "@/lib/archive";
+import { AmountFolds } from "@/components/stats-view";
 import { formatArs, formatCount, formatPct, formatUsd, formatWhen } from "@/lib/format";
 import { formatYmd, parseYmd, resolveDateRange } from "@/lib/query";
 
@@ -30,30 +30,48 @@ const PREVIEW = 12;
 
 export function ConcentrationBoard({
   report,
-  filters,
+  scope,
+  baseSearch,
   months,
   lastDay,
 }: {
   report: ConcentrationReport;
-  filters: Filters;
+  /** Global period/currency; the board follows it unless overridden here. */
+  scope: StatsScope;
+  /** Buscador filters + global scope, preserved when the board changes. */
+  baseSearch: ListSearch;
   months: MonthOption[];
   lastDay: string;
 }) {
   const navigate = useNavigate();
   const params = report.params;
   const money = params.cur === "usd" ? formatUsd : formatArs;
-  const archiveSearch = filtersToListSearch(filters);
   const range = resolveDateRange(params, Date.now(), parseYmd(lastDay));
+  const active = concentrationActive(params, scope);
+  const drillScope: StatsScope = { when: params.when === "todo" ? "" : params.when, from: params.from, to: params.to, cur: params.cur };
+  const rangeLabel = range
+    ? formatYmd(range.from) === formatYmd(range.to)
+      ? formatYmd(range.from)
+      : `${formatYmd(range.from)} → ${formatYmd(range.to)}`
+    : "todo el archivo";
+  const summary = [
+    `cortes ${params.cuts.join("/")} %`,
+    `hasta ${money(params.under)}`,
+    `desde ${money(params.over)}`,
+    `recurrentes ${params.reps}+`,
+    params.cur === "usd" ? "US$" : "pesos",
+    rangeLabel,
+  ].join(" · ");
 
   function apply(next: ConcentrationParams) {
-    const search: ListSearch = { ...archiveSearch, ...concentrationToSearch(next) };
-    navigate({ to: "/", search });
+    const search: ListSearch = { ...baseSearch, ...concentrationToSearch(next, scope) };
+    navigate({ to: "/", search, hash: "concentracion", resetScroll: false });
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const cur = String(data.get("ccur") ?? "ars") === "usd" ? "usd" : "ars";
+    const cur = String(data.get("ccur") ?? params.cur) === "usd" ? "usd" : "ars";
     const refunds = String(data.get("cdev") ?? "out");
     const from = String(data.get("cfrom") ?? "").trim();
     const to = String(data.get("cto") ?? "").trim();
@@ -71,8 +89,8 @@ export function ConcentrationBoard({
     });
   }
 
-  const underSearch = concentrationBandSearch(params, "under");
-  const overSearch = concentrationBandSearch(params, "over");
+  const underSearch = { ...concentrationBandSearch(params, "under", scope), ...scopeKeep(baseSearch) };
+  const overSearch = { ...concentrationBandSearch(params, "over", scope), ...scopeKeep(baseSearch) };
 
   return (
     <section id="concentracion" className="scroll-mt-6 space-y-4">
@@ -80,24 +98,40 @@ export function ConcentrationBoard({
         <p className="text-xs font-semibold tracking-widest text-primary uppercase">Concentración</p>
         <h2 className="text-3xl tracking-tight">Quién sostiene el archivo</h2>
         <p className="text-sm leading-6 text-muted-foreground">
-          Cada tarjeta se abre y muestra de quién o de qué está hecha. Los cortes, umbrales y la moneda se eligen acá
-          arriba y quedan en la URL. Nombres unificados; las devoluciones, por defecto, no entran.
+          Cada tarjeta se abre y muestra de quién o de qué está hecha. Sigue el período y la moneda de la barra de
+          arriba; en «Parámetros» se cambian cortes, umbrales, recurrentes, montos típicos, fechas y moneda solo para
+          este bloque. Todo queda en la URL. Nombres unificados; las devoluciones, por defecto, no entran.
         </p>
       </div>
 
+      <details className="fold group rounded-2xl bg-card ring-1 ring-foreground/10" open={false}>
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 md:px-5">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold">
+              Parámetros{active ? <span className="ml-2 align-middle"><Badge>cambiados</Badge></span> : null}
+            </span>
+            <span className="block text-xs text-muted-foreground">{summary}</span>
+          </span>
+          <span className="chev text-muted-foreground" aria-hidden="true">›</span>
+        </summary>
       <form
         key={`${params.cuts.join(",")}-${params.typical.join(",")}-${params.under}-${params.over}-${params.reps}-${params.cur}-${params.refunds}-${params.from}-${params.to}`}
         onSubmit={onSubmit}
-        className="space-y-4 rounded-2xl bg-card p-3 ring-1 ring-foreground/10 md:p-5"
+        className="space-y-4 border-t border-border/80 p-3 md:p-5"
       >
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             {formatCount(report.scopedCount)} aportes · {formatCount(report.donorCount)} personas ·{" "}
-            {formatArs(report.scopedArs)} · {formatUsd(report.scopedUsd)}
-            {range ? ` · ${formatYmd(range.from) === formatYmd(range.to) ? formatYmd(range.from) : `${formatYmd(range.from)} → ${formatYmd(range.to)}`}` : ""}
+            {formatArs(report.scopedArs)} · {formatUsd(report.scopedUsd)} · {rangeLabel}
           </p>
-          {concentrationActive(params) ? (
-            <Link to="/" search={archiveSearch} className={buttonClass("outline", "h-9 px-3")}>
+          {active ? (
+            <Link
+              to="/"
+              search={baseSearch}
+              hash="concentracion"
+              resetScroll={false}
+              className={buttonClass("outline", "h-9 px-3")}
+            >
               Valores por defecto
             </Link>
           ) : null}
@@ -197,6 +231,7 @@ export function ConcentrationBoard({
           Recalcular
         </button>
       </form>
+      </details>
 
       <div className="grid gap-3 lg:grid-cols-2">
         {report.cuts.map((cut) => (
@@ -215,7 +250,13 @@ export function ConcentrationBoard({
           value={formatPct(report.typicalShare)}
           text="de los aportes en la moneda elegida"
         >
-          <AmountTable rows={report.typical} money={money} empty="Ningún aporte cae en esos montos." />
+          {report.typical.every((row) => row.count === 0) ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">Ningún aporte cae en esos montos.</p>
+          ) : (
+            <div className="px-3 py-2 md:px-5">
+              <AmountFolds rows={report.typical} cur={params.cur} scope={drillScope} />
+            </div>
+          )}
         </Disclosure>
 
         <Disclosure
@@ -258,7 +299,17 @@ export function ConcentrationBoard({
           value={money(report.median)}
           text={`moda ${money(report.mode)} (${formatCount(report.modeCount)} veces)`}
         >
-          <Histogram rows={report.histogram} money={money} mode={report.mode} median={report.median} />
+          {report.histogram.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">No hay montos para armar la distribución.</p>
+          ) : (
+            <div className="space-y-2 px-3 py-3 md:px-5">
+              <p className="text-xs text-muted-foreground">
+                Los {formatCount(report.histogram.length)} montos que más se repiten (moda {money(report.mode)}, mediana{" "}
+                {money(report.median)}). Cada uno se abre con sus aportes.
+              </p>
+              <AmountFolds rows={report.histogram} cur={params.cur} scope={drillScope} />
+            </div>
+          )}
         </Disclosure>
 
         <Disclosure
@@ -388,42 +439,6 @@ function DonorTable({
   );
 }
 
-function AmountTable({
-  rows,
-  money,
-  empty,
-}: {
-  rows: { amount: number; count: number; share: number }[];
-  money: (value: number) => string;
-  empty: string;
-}) {
-  if (rows.every((row) => row.count === 0)) {
-    return <p className="px-5 py-4 text-sm text-muted-foreground">{empty}</p>;
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[20rem] text-left text-sm">
-        <thead>
-          <tr className="border-b border-border text-xs tracking-wide text-muted-foreground uppercase">
-            <th className="px-5 py-2 font-medium">Monto</th>
-            <th className="px-3 py-2 font-medium">Aportes</th>
-            <th className="px-5 py-2 font-medium">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.amount} className="border-t border-border/80">
-              <td className="px-5 py-2 font-medium tabular-nums">{money(row.amount)}</td>
-              <td className="px-3 py-2 tabular-nums">{formatCount(row.count)}</td>
-              <td className="px-5 py-2 tabular-nums">{formatPct(row.share)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function HitList({
   rows,
   cur,
@@ -470,53 +485,6 @@ function HitList({
           Ver todos en el buscador
         </Link>
       </div>
-    </div>
-  );
-}
-
-function Histogram({
-  rows,
-  money,
-  mode,
-  median,
-}: {
-  rows: { amount: number; count: number; share: number }[];
-  money: (value: number) => string;
-  mode: number;
-  median: number;
-}) {
-  if (rows.length === 0) {
-    return <p className="px-5 py-4 text-sm text-muted-foreground">No hay montos para armar la distribución.</p>;
-  }
-  const peak = Math.max(...rows.map((row) => row.count), 1);
-  return (
-    <div className="space-y-3 px-5 py-4">
-      <p className="text-xs text-muted-foreground">
-        Los {formatCount(rows.length)} montos que más se repiten. La mediana es {money(median)}.
-      </p>
-      <ol className="space-y-2">
-        {rows.map((row) => (
-          <li key={row.amount} className="space-y-1">
-            <div className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="font-medium tabular-nums">
-                {money(row.amount)}
-                {row.amount === mode ? (
-                  <span className="ml-2 text-xs font-semibold tracking-wide text-primary uppercase">moda</span>
-                ) : null}
-              </span>
-              <span className="tabular-nums text-muted-foreground">
-                {formatCount(row.count)} · {formatPct(row.share)}
-              </span>
-            </div>
-            <span className="block h-2 overflow-hidden rounded-full bg-muted">
-              <span
-                className="block h-full rounded-full bg-primary"
-                style={{ width: `${Math.max(4, (row.count / peak) * 100)}%` }}
-              />
-            </span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }
@@ -635,4 +603,11 @@ function parseTips(raw: string) {
 function numberOr(value: FormDataEntryValue | null, fallback: number) {
   const n = Number(String(value ?? "").replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+const SCOPE_KEYS = ["sw", "sfrom", "sto", "scur"] as const;
+
+function scopeKeep(search: ListSearch): ListSearch {
+  const next: ListSearch = {};
+  for (const key of SCOPE_KEYS) if (search[key]) next[key] = search[key] as never;
+  return next;
 }

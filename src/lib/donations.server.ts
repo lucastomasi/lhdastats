@@ -23,6 +23,7 @@ import {
   type WordTerm,
 } from "./archive";
 import { STOP_WORDS } from "./stopwords";
+import { messageLinks } from "./links";
 import { canonicalKey } from "./identities";
 import { KICK_GIFTS } from "./chat-board";
 import { classifyMessage, CONDUCT_ORDER, hasLaugh, hasLink, youtubeIds, type ConductKey } from "./conduct";
@@ -56,8 +57,13 @@ type RefundFile = {
   refunds: { id: number; reason: string }[];
 };
 
-type IndexedDonation = Donation & {
+export type IndexedDonation = Donation & {
   nameKey: string;
+  period: string;
+  month: string;
+  ytIds: string[];
+  sites: string[];
+  links: { url: string; site: string }[];
   haystack: string;
   day: number | null;
   hasLink: boolean;
@@ -81,7 +87,7 @@ type Cache = {
 const TOKEN = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_]{3,}/g;
 const URL_CHUNK = /https?:\/\/\S+|www\.\S+/gi;
 
-const BRACKETS: { label: string; min: number; max: number | null }[] = [
+export const BRACKETS: { label: string; min: number; max: number | null }[] = [
   { label: "Menos de $500", min: 0, max: 500 },
   { label: "$500 a $1.999", min: 500, max: 2000 },
   { label: "$2.000 a $9.999", min: 2000, max: 10000 },
@@ -128,7 +134,9 @@ let cache: Cache | null = null;
 
 export { fold };
 
-function periodOf(label: string): { key: string; label: string } {
+export const PERIOD_KEYS = PERIOD_ORDER;
+
+export function periodOf(label: string): { key: string; label: string } {
   const match = /^Hace\s+(\d+)\s+(\S+)$/i.exec(label.trim());
   if (!match) return { key: "otras", label: "Otras" };
   const amount = Number(match[1]);
@@ -148,7 +156,7 @@ function periodOf(label: string): { key: string; label: string } {
   return { key: "otras", label: "Otras" };
 }
 
-function toPublic(row: IndexedDonation): Donation {
+export function toPublic(row: IndexedDonation): Donation {
   return {
     id: row.id,
     nombre: row.nombre,
@@ -163,7 +171,7 @@ function toPublic(row: IndexedDonation): Donation {
   };
 }
 
-function countWords(message: string, wordMap: Map<string, Map<string, number>>) {
+export function countWords(message: string, wordMap: Map<string, Map<string, number>>) {
   const cleaned = message.replace(URL_CHUNK, " ");
   const tokens = cleaned.match(TOKEN);
   if (!tokens) return;
@@ -176,7 +184,7 @@ function countWords(message: string, wordMap: Map<string, Map<string, number>>) 
   }
 }
 
-function rankWords(wordMap: Map<string, Map<string, number>>): WordTerm[] {
+export function rankWords(wordMap: Map<string, Map<string, number>>): WordTerm[] {
   return [...wordMap.entries()]
     .map(([key, variants]) => {
       const ranked = [...variants.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
@@ -194,13 +202,20 @@ function build(): Cache {
     const devolucion = byId.get(row.id) ?? null;
     const extra = devolucion ? " devuelta devolucion reintegro" : "";
     const message = row.mensaje ?? "";
+    const day = isoToYmd(row.fecha_aprox);
+    const links = messageLinks(message);
     return {
       ...row,
+      period: periodOf(row.fecha_relativa).key,
+      month: day == null ? "" : formatYmd(day).slice(0, 7),
+      ytIds: [...new Set(youtubeIds(message))],
+      sites: [...new Set(links.map((link) => link.site))],
+      links,
       devuelta: Boolean(devolucion),
       devolucion,
       nameKey: canonicalKey(fold(row.nombre)),
       haystack: fold(`${row.nombre} ${message}${extra}`),
-      day: isoToYmd(row.fecha_aprox),
+      day,
       hasLink: hasLink(message),
       hasYoutube: youtubeIds(message).length > 0,
       blank: message.trim().length === 0,
@@ -648,14 +663,35 @@ function mine(rows: IndexedDonation[], profiles: DonorProfile[], totalArs: numbe
   };
 }
 
-function ensure() {
+export function ensure() {
   if (!cache) cache = build();
   return cache;
 }
 
+let siteChoices: { key: string; count: number }[] | null = null;
+
+function sitesOf(rows: IndexedDonation[]) {
+  if (siteChoices) return siteChoices;
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const site of row.sites) counts.set(site, (counts.get(site) ?? 0) + 1);
+  }
+  siteChoices = [...counts.entries()]
+    .filter(([, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 40)
+    .map(([key, count]) => ({ key, count }));
+  return siteChoices;
+}
+
 function context() {
-  const { months, donorChoices, lastDay } = ensure();
-  return { months, donors: donorChoices, lastDay: lastDay == null ? "" : formatYmd(lastDay) };
+  const { months, donorChoices, lastDay, rows } = ensure();
+  return {
+    months,
+    donors: donorChoices,
+    sites: sitesOf(rows),
+    lastDay: lastDay == null ? "" : formatYmd(lastDay),
+  };
 }
 
 function select(filters: Filters) {
@@ -674,7 +710,7 @@ function select(filters: Filters) {
     if (filters.minUsd !== null && row.monto_usd < filters.minUsd) continue;
     if (filters.maxUsd !== null && row.monto_usd > filters.maxUsd) continue;
     if (range && (row.day == null || row.day < range.from || row.day > range.to)) continue;
-    if (filters.conduct && row.conduct !== filters.conduct) continue;
+    if (filters.conduct && (row.privado || row.conduct !== filters.conduct)) continue;
     if (filters.hasLink && !row.hasLink) continue;
     if (filters.hasYoutube && !row.hasYoutube) continue;
     if (filters.empty && !row.blank) continue;
@@ -683,6 +719,8 @@ function select(filters: Filters) {
     if (filters.refunds === "only" && !row.devuelta) continue;
     if (filters.currency === "usd" && !row.usdOriginal) continue;
     if (filters.currency === "ars" && row.usdOriginal) continue;
+    if (filters.domain && !row.sites.includes(filters.domain)) continue;
+    if (filters.video && !row.ytIds.includes(filters.video)) continue;
     matched.push(row);
     ars += row.monto_ars;
     usd += row.monto_usd;

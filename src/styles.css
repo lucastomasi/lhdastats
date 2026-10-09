@@ -82,3 +82,23 @@
     background: color-mix(in oklch, var(--primary) 22%, white);
   }
 }
+
+/* Desplegables: details/summary sin el triángulo nativo, con chevron propio. */
+details.fold > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details.fold > summary::-webkit-details-marker {
+  display: none;
+}
+details.fold > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  border-radius: 0.75rem;
+}
+details.fold > summary .chev {
+  transition: transform 150ms ease;
+}
+details.fold[open] > summary .chev {
+  transform: rotate(90deg);
+}

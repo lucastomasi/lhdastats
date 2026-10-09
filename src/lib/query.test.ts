@@ -119,3 +119,41 @@ test("concentration params default and stay in the URL only when changed", () =>
   assert.equal(over.minusd, 8000);
   assert.equal(over.sort, "mayor");
 });
+test("concentration follows the global scope unless it is overridden", async () => {
+  const { parseScope, scopeToSearch } = await import("./archive.ts");
+  const scope = parseScope({ sw: "2026-09", scur: "usd" });
+  assert.deepEqual(scopeToSearch(scope), { sw: "2026-09", scur: "usd" });
+
+  const inherited = parseConcentration({}, scope);
+  assert.equal(inherited.when, "2026-09");
+  assert.equal(inherited.cur, "usd");
+  assert.deepEqual(concentrationToSearch(inherited, scope), {});
+
+  const own = parseConcentration({ cfrom: "2026-10-01", cto: "2026-10-05", ccur: "ars" }, scope);
+  assert.equal(own.when, "");
+  assert.equal(own.from, "2026-10-01");
+  assert.deepEqual(concentrationToSearch(own, scope), { cfrom: "2026-10-01", cto: "2026-10-05", ccur: "ars" });
+
+  const cleared = { ...inherited, when: "", from: "", to: "" };
+  assert.deepEqual(concentrationToSearch(cleared, scope), { cwhen: "todo" });
+  const reparsed = parseConcentration({ cwhen: "todo" }, scope);
+  assert.equal(resolveDateRange(reparsed, Date.now()), null);
+});
+
+test("domain and video filters round-trip through the URL", async () => {
+  const filters = parseFilters({ dom: "instagram.com", yt: "dQw4w9WgXcQ" });
+  assert.equal(filters.domain, "instagram.com");
+  assert.equal(filters.video, "dQw4w9WgXcQ");
+  const search = filtersToListSearch(filters);
+  assert.equal(search.dom, "instagram.com");
+  assert.equal(search.yt, "dQw4w9WgXcQ");
+});
+
+test("message links are grouped by site", async () => {
+  const { messageLinks } = await import("./links.ts");
+  const links = messageLinks("mirá https://youtu.be/dQw4w9WgXcQ y https://www.instagram.com/p/abc y https://twitter.com/x/status/1");
+  assert.deepEqual(
+    links.map((link) => link.site),
+    ["youtube.com", "instagram.com", "x.com"],
+  );
+});

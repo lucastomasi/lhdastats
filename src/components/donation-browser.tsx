@@ -47,6 +47,7 @@ export function DonationBrowser({
   months = [],
   donors = [],
   lastDay = "",
+  sites = [],
   extraSearch = {},
 }: {
   filters: Filters;
@@ -56,6 +57,7 @@ export function DonationBrowser({
   months?: MonthOption[];
   donors?: DonorChoice[];
   lastDay?: string;
+  sites?: { key: string; count: number }[];
   extraSearch?: ListSearch;
 }) {
   const navigate = useNavigate();
@@ -83,7 +85,7 @@ export function DonationBrowser({
     if (mode === "donor" && donorName) {
       navigate({ to: "/donante/$nombre", params: { nombre: donorName }, search });
     } else {
-      navigate({ to: "/", search });
+      navigate({ to: "/", search, hash: "archivo", resetScroll: false });
     }
   }
 
@@ -114,6 +116,7 @@ export function DonationBrowser({
       conduct: String(data.get("conduct") ?? ""),
       refunds: refundFrom(data.get("dev")),
       currency: currencyFrom(data.get("cur")),
+      domain: String(data.get("dom") ?? "").trim(),
       page: 1,
     });
   }
@@ -250,7 +253,29 @@ export function DonationBrowser({
 
           <fieldset className="grid gap-2">
             <legend className="text-xs font-medium text-muted-foreground">En el mensaje</legend>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                Sitio del link
+                <select
+                  name="dom"
+                  value={filters.domain}
+                  onChange={(event) => patch({ domain: event.target.value })}
+                  className={`${fieldClass} h-9 w-auto`}
+                >
+                  <option value="">Cualquiera</option>
+                  {filters.domain && !sites.some((site) => site.key === filters.domain) ? (
+                    <option value={filters.domain}>{filters.domain}</option>
+                  ) : null}
+                  {sites.map((site) => (
+                    <option key={site.key} value={site.key}>
+                      {site.key} ({formatCount(site.count)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {filters.video ? (
+                <FlagChip label={`Video ${filters.video} ×`} on onToggle={() => patch({ video: "" })} />
+              ) : null}
               <FlagChip
                 label="Tiene link"
                 on={filters.hasLink}
@@ -574,7 +599,7 @@ function viewMonth(filters: Filters, range: { from: number; to: number } | null,
 
 function FlagChip({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
   return (
-    <button type="button" onClick={onToggle} className={chipClass(on)}>
+    <button type="button" aria-pressed={on} onClick={onToggle} className={chipClass(on)}>
       {label}
     </button>
   );

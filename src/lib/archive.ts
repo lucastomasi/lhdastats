@@ -169,6 +169,8 @@ export type Filters = {
   priv: boolean;
   refunds: RefundMode;
   currency: CurrencyMode;
+  domain: string;
+  video: string;
   page: number;
 };
 
@@ -198,7 +200,184 @@ export type ListSearch = {
   cto?: string;
   ccur?: string;
   cdev?: string;
+  dom?: string;
+  yt?: string;
+  sw?: string;
+  sfrom?: string;
+  sto?: string;
+  scur?: string;
 };
+
+/** Global scope for every stats section (dates + currency). Lives in the URL as sw/sfrom/sto/scur. */
+export type StatsScope = {
+  when: string;
+  from: string;
+  to: string;
+  cur: "ars" | "usd";
+};
+
+export const DEFAULT_SCOPE: StatsScope = { when: "", from: "", to: "", cur: "ars" };
+
+export type DonorLine = {
+  nombre: string;
+  count: number;
+  ars: number;
+  usd: number;
+};
+
+export type RankRow = DonorLine & {
+  aliases: string[];
+  kickGiftUsd: number;
+  share: number;
+};
+
+export type ConductStat = {
+  key: string;
+  label: string;
+  texts: number;
+  textShare: number;
+  amountShare: number;
+  meanArs: number;
+  meanUsd: number;
+  top: DonorLine[];
+};
+
+export type PeriodStat = {
+  key: string;
+  label: string;
+  count: number;
+  ars: number;
+  usd: number;
+  from: string;
+  to: string;
+  top: DonorLine[];
+};
+
+export type ClipStat = {
+  id: string;
+  count: number;
+  ars: number;
+  usd: number;
+  donors: number;
+  href: string;
+  title: string | null;
+  channel: string | null;
+};
+
+export type DomainStat = {
+  key: string;
+  links: number;
+  messages: number;
+  ars: number;
+  usd: number;
+  donors: number;
+  top: DonorLine[];
+  urls: { url: string; count: number }[];
+};
+
+export type BracketStat = {
+  key: string;
+  label: string;
+  min: number;
+  max: number | null;
+  count: number;
+  ars: number;
+  usd: number;
+};
+
+export type ParetoStat = {
+  label: string;
+  donors: number;
+  share: number;
+  list: DonorLine[];
+};
+
+export type MentionStat = {
+  key: string;
+  nombre: string;
+  count: number;
+};
+
+export type StatsReport = {
+  scope: StatsScope;
+  range: { from: string; to: string } | null;
+  summary: {
+    count: number;
+    ars: number;
+    usd: number;
+    donors: number;
+    publicCount: number;
+    privateCount: number;
+    refundedCount: number;
+    refundedArs: number;
+    refundedUsd: number;
+  };
+  findings: {
+    median: number;
+    mean: number;
+    mode: number;
+    modeCount: number;
+    repeatDonors: number;
+    repeatDonorShare: number;
+    repeatDonationShare: number;
+    topPercentCount: number;
+    topPercentShare: number;
+    top10Share: number;
+    rawNames: number;
+    pareto: ParetoStat[];
+    repeatTop: DonorLine[];
+    aliasTop: { nombre: string; aliases: string[] }[];
+    modes: { amount: number; count: number; share: number }[];
+  };
+  conduct: ConductStat[];
+  habits: { regularWriters: number; clipHabitDonors: number; storyHabitDonors: number };
+  periods: PeriodStat[];
+  months: PeriodStat[];
+  ranking: { byAmount: RankRow[]; byCount: RankRow[] };
+  words: WordTerm[];
+  youtube: { clips: ClipStat[]; links: number; unique: number; once: number };
+  domains: DomainStat[];
+  brackets: BracketStat[];
+  mentions: { named: MentionStat[]; namedLaugh: MentionStat[]; ownLaugh: (MentionStat & { share: number })[] };
+};
+
+export const DRILL_KINDS = [
+  "conduct",
+  "period",
+  "month",
+  "yt",
+  "domain",
+  "donor",
+  "word",
+  "mention",
+  "bracket",
+  "amount",
+] as const;
+
+export type DrillKind = (typeof DRILL_KINDS)[number];
+
+export type DrillInput = {
+  kind: DrillKind;
+  key: string;
+  page: number;
+  sort: "reciente" | "mayor";
+  scope: StatsScope;
+};
+
+export type DrillResult = {
+  kind: DrillKind;
+  key: string;
+  total: number;
+  ars: number;
+  usd: number;
+  page: number;
+  pages: number;
+  rows: Donation[];
+  top: DonorLine[];
+  search: ListSearch;
+};
+
+export const DRILL_PAGE_SIZE = 10;
 
 export type ConcentrationParams = {
   cuts: number[];
@@ -309,7 +488,7 @@ const HAS_FLAGS = ["link", "yt", "empty", "priv"] as const;
 const REFUNDS: RefundMode[] = ["in", "out", "only"];
 const CURRENCIES: CurrencyMode[] = ["ars", "usd"];
 const CONDUCT = ["link", "story", "question", "politics", "greet", "laugh", "curse", "cheer", "short"];
-const WHEN = /^(hoy|ayer|semana|mes|ultimo|\d{4}-\d{2})$/;
+const WHEN = /^(todo|hoy|ayer|semana|mes|ultimo|\d{4}-\d{2})$/;
 
 function asRecord(input: unknown): Record<string, unknown> {
   return input && typeof input === "object" ? (input as Record<string, unknown>) : {};
@@ -390,6 +569,16 @@ function conductOf(value: unknown) {
   return CONDUCT.includes(raw) ? raw : "";
 }
 
+function domainOf(value: unknown) {
+  const raw = clip(str(value), 80).toLowerCase();
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+$/.test(raw) ? raw : "";
+}
+
+function videoOf(value: unknown) {
+  const raw = clip(str(value), 11);
+  return /^[A-Za-z0-9_-]{11}$/.test(raw) ? raw : "";
+}
+
 function flagsFrom(raw: Record<string, unknown>) {
   if (typeof raw.hasLink === "boolean" || typeof raw.hasYoutube === "boolean") {
     return {
@@ -428,8 +617,14 @@ export function parseListSearch(raw: Record<string, unknown>): ListSearch {
     cwhen: whenOf(raw.cwhen),
     cfrom: dateOf(raw.cfrom),
     cto: dateOf(raw.cto),
-    ccur: str(raw.ccur) === "usd" ? "usd" : "ars",
+    ccur: str(raw.ccur) === "usd" ? "usd" : str(raw.ccur) === "ars" ? "ars" : "",
     cdev: REFUNDS.includes(str(raw.cdev) as RefundMode) ? str(raw.cdev) : "out",
+    dom: domainOf(raw.dom ?? raw.domain),
+    yt: videoOf(raw.yt ?? raw.video),
+    sw: whenOf(raw.sw),
+    sfrom: dateOf(raw.sfrom),
+    sto: dateOf(raw.sto),
+    scur: str(raw.scur) === "usd" ? "usd" : "ars",
   };
   const min = amountOf(raw.min ?? raw.minArs);
   const max = amountOf(raw.max ?? raw.maxArs, true);
@@ -487,14 +682,50 @@ function numberList(value: unknown, fallback: number[], min: number, max: number
   return list.length > 0 ? list.sort((a, b) => a - b) : [...fallback];
 }
 
-export function parseConcentration(input: unknown): ConcentrationParams {
+export function parseScope(input: unknown): StatsScope {
   const raw = asRecord(input);
+  return {
+    when: whenOf(raw.sw),
+    from: dateOf(raw.sfrom),
+    to: dateOf(raw.sto),
+    cur: str(raw.scur) === "usd" ? "usd" : "ars",
+  };
+}
+
+/** Scope sent as a plain object (drill-down requests). */
+export function scopeFrom(input: unknown): StatsScope {
+  const raw = asRecord(input);
+  return {
+    when: whenOf(raw.when),
+    from: dateOf(raw.from),
+    to: dateOf(raw.to),
+    cur: str(raw.cur) === "usd" ? "usd" : "ars",
+  };
+}
+
+export function scopeToSearch(scope: StatsScope): ListSearch {
+  const search: ListSearch = {};
+  if (scope.when) search.sw = scope.when;
+  if (scope.from) search.sfrom = scope.from;
+  if (scope.to) search.sto = scope.to;
+  if (scope.cur !== "ars") search.scur = scope.cur;
+  return search;
+}
+
+export function scopeActive(scope: StatsScope) {
+  return Boolean(scope.when || scope.from || scope.to);
+}
+
+export function parseConcentration(input: unknown, inherit: StatsScope = DEFAULT_SCOPE): ConcentrationParams {
+  const raw = asRecord(input);
+  const ownDates = Boolean(whenOf(raw.cwhen) || dateOf(raw.cfrom) || dateOf(raw.cto));
   const cuts = numberList(raw.cut ?? raw.cuts, DEFAULT_CONCENTRATION.cuts, 1, 99, 4).map((n) => Math.round(n));
   const typical = numberList(raw.tips ?? raw.typical, DEFAULT_CONCENTRATION.typical, 0.01, 1_000_000_000, 12);
   const under = amountOf(raw.upto ?? raw.under) ?? DEFAULT_CONCENTRATION.under;
   const over = amountOf(raw.over) ?? DEFAULT_CONCENTRATION.over;
   const reps = intOf(raw.reps, 1, 1000) ?? DEFAULT_CONCENTRATION.reps;
-  const cur = str(raw.ccur) === "usd" ? "usd" : "ars";
+  const ccur = str(raw.ccur);
+  const cur = ccur === "usd" ? "usd" : ccur === "ars" ? "ars" : inherit.cur;
   const refundsRaw = str(raw.cdev);
   return {
     cuts: cuts.length ? cuts : [...DEFAULT_CONCENTRATION.cuts],
@@ -502,9 +733,9 @@ export function parseConcentration(input: unknown): ConcentrationParams {
     under,
     over,
     reps,
-    when: whenOf(raw.cwhen),
-    from: dateOf(raw.cfrom),
-    to: dateOf(raw.cto),
+    when: ownDates ? whenOf(raw.cwhen) : inherit.when,
+    from: ownDates ? dateOf(raw.cfrom) : inherit.from,
+    to: ownDates ? dateOf(raw.cto) : inherit.to,
     cur,
     refunds: REFUNDS.includes(refundsRaw as RefundMode) ? (refundsRaw as RefundMode) : "out",
   };
@@ -514,17 +745,24 @@ function sameList(a: number[], b: number[]) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-export function concentrationToSearch(params: ConcentrationParams): ListSearch {
+function sameDates(params: ConcentrationParams, inherit: StatsScope) {
+  return params.when === inherit.when && params.from === inherit.from && params.to === inherit.to;
+}
+
+export function concentrationToSearch(params: ConcentrationParams, inherit: StatsScope = DEFAULT_SCOPE): ListSearch {
   const search: ListSearch = {};
   if (!sameList(params.cuts, DEFAULT_CONCENTRATION.cuts)) search.cut = params.cuts.join(",");
   if (!sameList(params.typical, DEFAULT_CONCENTRATION.typical)) search.tips = params.typical.join(",");
   if (params.under !== DEFAULT_CONCENTRATION.under) search.upto = params.under;
   if (params.over !== DEFAULT_CONCENTRATION.over) search.over = params.over;
   if (params.reps !== DEFAULT_CONCENTRATION.reps) search.reps = params.reps;
-  if (params.when) search.cwhen = params.when;
-  if (params.from) search.cfrom = params.from;
-  if (params.to) search.cto = params.to;
-  if (params.cur !== DEFAULT_CONCENTRATION.cur) search.ccur = params.cur;
+  if (!sameDates(params, inherit)) {
+    if (params.when) search.cwhen = params.when;
+    if (params.from) search.cfrom = params.from;
+    if (params.to) search.cto = params.to;
+    if (!params.when && !params.from && !params.to) search.cwhen = "todo";
+  }
+  if (params.cur !== inherit.cur) search.ccur = params.cur;
   if (params.refunds !== DEFAULT_CONCENTRATION.refunds) search.cdev = params.refunds;
   return search;
 }
@@ -544,22 +782,24 @@ export function concentrationSlice(search: ListSearch): ListSearch {
   return next;
 }
 
-export function concentrationActive(params: ConcentrationParams) {
+export function concentrationActive(params: ConcentrationParams, inherit: StatsScope = DEFAULT_SCOPE) {
   return Boolean(
+    !sameDates(params, inherit) ||
+      params.cur !== inherit.cur ||
     !sameList(params.cuts, DEFAULT_CONCENTRATION.cuts) ||
       !sameList(params.typical, DEFAULT_CONCENTRATION.typical) ||
       params.under !== DEFAULT_CONCENTRATION.under ||
       params.over !== DEFAULT_CONCENTRATION.over ||
       params.reps !== DEFAULT_CONCENTRATION.reps ||
-      params.when ||
-      params.from ||
-      params.to ||
-      params.cur !== DEFAULT_CONCENTRATION.cur ||
       params.refunds !== DEFAULT_CONCENTRATION.refunds,
   );
 }
 
-export function concentrationBandSearch(params: ConcentrationParams, band: "under" | "over"): ListSearch {
+export function concentrationBandSearch(
+  params: ConcentrationParams,
+  band: "under" | "over",
+  inherit: StatsScope = DEFAULT_SCOPE,
+): ListSearch {
   const scoped: Filters = {
     q: "",
     donor: "",
@@ -578,6 +818,8 @@ export function concentrationBandSearch(params: ConcentrationParams, band: "unde
     priv: false,
     refunds: params.refunds === "in" ? "in" : params.refunds,
     currency: "",
+    domain: "",
+    video: "",
     page: 1,
   };
   if (params.cur === "usd") {
@@ -585,7 +827,7 @@ export function concentrationBandSearch(params: ConcentrationParams, band: "unde
     else scoped.minUsd = params.over;
   } else if (band === "under") scoped.maxArs = params.under;
   else scoped.minArs = params.over;
-  return { ...filtersToListSearch(scoped), ...concentrationToSearch(params) };
+  return { ...filtersToListSearch(scoped), ...concentrationToSearch(params, inherit), ...scopeToSearch(inherit) };
 }
 
 export function parseFilters(input: unknown): Filters {
@@ -612,6 +854,8 @@ export function toFilters(search: ListSearch, donorOverride?: string): Filters {
     priv: flags.priv,
     refunds: refundsOf(search.dev),
     currency: currencyOf(search.cur),
+    domain: search.dom ?? "",
+    video: search.yt ?? "",
     page: search.page && search.page > 0 ? search.page : 1,
   };
 }
@@ -633,6 +877,8 @@ export function filtersToListSearch(filters: Filters, page?: number, includeDono
   if (has) search.has = has;
   if (filters.refunds !== "in") search.dev = filters.refunds;
   if (filters.currency) search.cur = filters.currency;
+  if (filters.domain) search.dom = filters.domain;
+  if (filters.video) search.yt = filters.video;
   const nextPage = page ?? filters.page;
   if (nextPage > 1) search.page = nextPage;
   return search;
@@ -656,6 +902,8 @@ export function filtersActive(filters: Filters, includeDonor = true) {
       filters.priv ||
       filters.refunds !== "in" ||
       filters.currency ||
+      filters.domain ||
+      filters.video ||
       filters.sort !== "reciente" ||
       filters.page > 1,
   );
@@ -694,6 +942,8 @@ function searchParamsOf(filters: Filters, page?: number, includeDonor = true) {
   if (search.has) params.set("has", search.has);
   if (search.dev) params.set("dev", search.dev);
   if (search.cur) params.set("cur", search.cur);
+  if (search.dom) params.set("dom", search.dom);
+  if (search.yt) params.set("yt", search.yt);
   if (search.page && search.page > 1) params.set("page", String(search.page));
   return params;
 }
@@ -731,8 +981,14 @@ export const EMPTY_SEARCH: ListSearch = {
   cwhen: "",
   cfrom: "",
   cto: "",
-  ccur: "ars",
+  ccur: "",
   cdev: "out",
+  dom: "",
+  yt: "",
+  sw: "",
+  sfrom: "",
+  sto: "",
+  scur: "ars",
 };
 
 export const EMPTY_FILTERS: Filters = toFilters(EMPTY_SEARCH);
