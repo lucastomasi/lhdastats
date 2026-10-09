@@ -13,4 +13,5 @@ artifacts
 screenshots
 attachments
 
-.grok
+.grok/*
+!.grok/app-env.json

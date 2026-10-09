@@ -1,5 +1,6 @@
-import archiveJson from "../../data/donations.json";
-import refundsJson from "../../data/refunds.json";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   PAGE_SIZE,
   parseFilters,
@@ -73,6 +74,24 @@ const PERIOD_ORDER = [
   "otras",
 ];
 
+function resolveDataDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(here, "data"),
+    join(here, "../data"),
+    join(here, "../../data"),
+    join(process.cwd(), "data"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(join(dir, "donations.json"))) return dir;
+  }
+  throw new Error("No se encontró data/donations.json junto al servidor.");
+}
+
+function readJsonFile<T>(name: string): T {
+  return JSON.parse(readFileSync(join(resolveDataDir(), name), "utf8")) as T;
+}
+
 let cache: Cache | null = null;
 
 export function fold(value: string) {
@@ -138,8 +157,8 @@ function rankWords(wordMap: Map<string, Map<string, number>>): WordTerm[] {
 }
 
 function build(): Cache {
-  const parsed = archiveJson as ArchiveFile;
-  const refunds = refundsJson as RefundFile;
+  const parsed = readJsonFile<ArchiveFile>("donations.json");
+  const refunds = readJsonFile<RefundFile>("refunds.json");
   const byId = new Map(refunds.refunds.map((item) => [item.id, item.reason]));
   const rows: IndexedDonation[] = parsed.donations.map((row) => {
     const devolucion = byId.get(row.id) ?? null;

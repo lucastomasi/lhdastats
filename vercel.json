@@ -1,3 +1,9 @@
 {
-  "installCommand": "npm install --omit=dev --no-audit --no-fund"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm install --no-audit --no-fund",
+  "buildCommand": "NODE_OPTIONS=--max-old-space-size=4096 npm run build",
+  "env": {
+    "VITE_AUTH_ENABLED": "false"
+  }
 }
