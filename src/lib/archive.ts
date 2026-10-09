@@ -299,8 +299,20 @@ function conductOf(value: unknown) {
   return CONDUCT.includes(raw) ? raw : "";
 }
 
+function flagsFrom(raw: Record<string, unknown>) {
+  if (typeof raw.hasLink === "boolean" || typeof raw.hasYoutube === "boolean") {
+    return {
+      hasLink: Boolean(raw.hasLink),
+      hasYoutube: Boolean(raw.hasYoutube),
+      empty: Boolean(raw.empty),
+      priv: Boolean(raw.priv),
+    };
+  }
+  return hasOf(raw.has);
+}
+
 export function parseListSearch(raw: Record<string, unknown>): ListSearch {
-  const flags = hasOf(raw.has);
+  const flags = flagsFrom(raw);
   const search: ListSearch = {
     q: clip(str(raw.q), 240),
     donor: clip(str(raw.donor), 160),
@@ -318,13 +330,13 @@ export function parseListSearch(raw: Record<string, unknown>): ListSearch {
     ]
       .filter(Boolean)
       .join(","),
-    dev: refundsOf(raw.dev),
-    cur: currencyOf(raw.cur),
+    dev: refundsOf(raw.dev ?? raw.refunds),
+    cur: currencyOf(raw.cur ?? raw.currency),
   };
-  const min = amountOf(raw.min);
-  const max = amountOf(raw.max, true);
-  const minusd = amountOf(raw.minusd);
-  const maxusd = amountOf(raw.maxusd, true);
+  const min = amountOf(raw.min ?? raw.minArs);
+  const max = amountOf(raw.max ?? raw.maxArs, true);
+  const minusd = amountOf(raw.minusd ?? raw.minUsd);
+  const maxusd = amountOf(raw.maxusd ?? raw.maxUsd, true);
   if (min !== null) search.min = min;
   if (max !== null) search.max = max;
   if (minusd !== null) search.minusd = minusd;

@@ -60,3 +60,13 @@ test("URL search keeps default sort as recientes and omits it", () => {
   assert.equal(cleared.when, "");
   assert.equal(cleared.q, "");
 });
+
+test("parseFilters keeps Filters-shaped loader input", () => {
+  const first = parseFilters({ min: 5000, has: "yt", dev: "only", cur: "usd" });
+  const again = parseFilters(first);
+  assert.equal(again.minArs, 5000);
+  assert.equal(again.hasYoutube, true);
+  assert.equal(again.refunds, "only");
+  assert.equal(again.currency, "usd");
+  assert.equal(again.sort, "reciente");
+});
