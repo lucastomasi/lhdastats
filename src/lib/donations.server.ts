@@ -3,9 +3,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PAGE_SIZE,
+  parseConcentration,
   parseFilters,
   readDonorName,
   type ArchiveMeta,
+  type AmountBucket,
+  type ConcentrationDonor,
+  type ConcentrationHit,
+  type ConcentrationParams,
+  type ConcentrationReport,
   type Donation,
   type DonorChoice,
   type DonorProfile,
@@ -710,12 +716,245 @@ function paginate(filters: Filters): PageResult {
   };
 }
 
-export function homePayload(filters: Filters) {
+const HIT_PREVIEW = 20;
+const HIST_LIMIT = 24;
+const FX_LIMIT = 16;
+
+function moneyOf(row: IndexedDonation, cur: "ars" | "usd") {
+  return cur === "usd" ? row.monto_usd : row.monto_ars;
+}
+
+function roundAmount(value: number, cur: "ars" | "usd") {
+  if (cur === "usd") return Math.round(value * 100) / 100;
+  return Math.round(value);
+}
+
+function toHit(row: IndexedDonation): ConcentrationHit {
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    ars: row.monto_ars,
+    usd: row.monto_usd,
+    fecha_relativa: row.fecha_relativa,
+    fecha_aprox: row.fecha_aprox,
+  };
+}
+
+type RankedDonor = ConcentrationDonor & { cur: number };
+
+function donorsUntilShare(ranked: RankedDonor[], total: number, pct: number): ConcentrationDonor[] {
+  const target = total * (pct / 100);
+  const picked: ConcentrationDonor[] = [];
+  let running = 0;
+  for (const donor of ranked) {
+    running += donor.cur;
+    picked.push({
+      nombre: donor.nombre,
+      count: donor.count,
+      ars: donor.ars,
+      usd: donor.usd,
+      share: donor.share,
+      cumulative: total > 0 ? running / total : 0,
+    });
+    if (running >= target) break;
+  }
+  return picked;
+}
+
+export function concentrate(params: ConcentrationParams): ConcentrationReport {
+  const { rows, lastDay } = ensure();
+  const range = resolveDateRange(params, Date.now(), lastDay);
+  const scoped: IndexedDonation[] = [];
+  let scopedArs = 0;
+  let scopedUsd = 0;
+  for (const row of rows) {
+    if (params.refunds === "out" && row.devuelta) continue;
+    if (params.refunds === "only" && !row.devuelta) continue;
+    if (range && (row.day == null || row.day < range.from || row.day > range.to)) continue;
+    scoped.push(row);
+    scopedArs += row.monto_ars;
+    scopedUsd += row.monto_usd;
+  }
+
+  const total = params.cur === "usd" ? scopedUsd : scopedArs;
+  const typicalSet = new Set(params.typical.map((n) => roundAmount(n, params.cur)));
+  const modes = new Map<number, number>();
+  const fx = new Map<number, number>();
+  const amounts: number[] = [];
+  let typicalCount = 0;
+  const underRows: IndexedDonation[] = [];
+  const overRows: IndexedDonation[] = [];
+  const agg = new Map<string, { nombre: string; count: number; ars: number; usd: number }>();
+
+  for (const row of scoped) {
+    const value = moneyOf(row, params.cur);
+    amounts.push(value);
+    const key = roundAmount(value, params.cur);
+    modes.set(key, (modes.get(key) ?? 0) + 1);
+    if (typicalSet.has(key)) typicalCount += 1;
+    if (value <= params.under) underRows.push(row);
+    if (value >= params.over) overRows.push(row);
+    if (row.monto_usd > 0) {
+      const rate = Math.round(row.monto_ars / row.monto_usd);
+      fx.set(rate, (fx.get(rate) ?? 0) + 1);
+    }
+    const current = agg.get(row.nameKey);
+    if (current) {
+      current.count += 1;
+      current.ars += row.monto_ars;
+      current.usd += row.monto_usd;
+    } else {
+      agg.set(row.nameKey, {
+        nombre: row.donorLabel,
+        count: 1,
+        ars: row.monto_ars,
+        usd: row.monto_usd,
+      });
+    }
+  }
+
+  amounts.sort((a, b) => a - b);
+  const mid = Math.floor(amounts.length / 2);
+  const median =
+    amounts.length === 0
+      ? 0
+      : amounts.length % 2 === 1
+        ? amounts[mid]
+        : (amounts[mid - 1] + amounts[mid]) / 2;
+
+  let mode = 0;
+  let modeCount = 0;
+  for (const [amount, count] of modes) {
+    if (count > modeCount || (count === modeCount && amount < mode)) {
+      mode = amount;
+      modeCount = count;
+    }
+  }
+
+  let modalFx = 0;
+  let modalFxCount = 0;
+  for (const [rate, count] of fx) {
+    if (count > modalFxCount || (count === modalFxCount && rate < modalFx)) {
+      modalFx = rate;
+      modalFxCount = count;
+    }
+  }
+
+  const ranked: RankedDonor[] = [...agg.values()]
+    .map((donor) => {
+      const cur = params.cur === "usd" ? donor.usd : donor.ars;
+      return {
+        nombre: donor.nombre,
+        count: donor.count,
+        ars: donor.ars,
+        usd: donor.usd,
+        share: total > 0 ? cur / total : 0,
+        cumulative: 0,
+        cur,
+      };
+    })
+    .sort((a, b) => b.cur - a.cur || b.count - a.count || a.nombre.localeCompare(b.nombre, "es"));
+
+  const cuts = params.cuts.map((pct) => {
+    const donors = donorsUntilShare(ranked, total, pct);
+    return { pct, donorCount: donors.length, donors };
+  });
+
+  const typical: AmountBucket[] = params.typical.map((amount) => {
+    const key = roundAmount(amount, params.cur);
+    const count = modes.get(key) ?? 0;
+    return { amount: key, count, share: scoped.length > 0 ? count / scoped.length : 0 };
+  });
+
+  const histogram: AmountBucket[] = [...modes.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .slice(0, HIST_LIMIT)
+    .map(([amount, count]) => ({
+      amount,
+      count,
+      share: scoped.length > 0 ? count / scoped.length : 0,
+    }));
+
+  const fxRows = [...fx.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+    .slice(0, FX_LIMIT)
+    .map(([rate, count]) => ({
+      rate,
+      count,
+      share: scoped.length > 0 ? count / scoped.length : 0,
+    }));
+
+  const recurrentSource = [...ranked.filter((donor) => donor.count >= params.reps)].sort(
+    (a, b) => b.count - a.count || b.cur - a.cur || a.nombre.localeCompare(b.nombre, "es"),
+  );
+  let recurrentAmount = 0;
+  const recurrentDonors: ConcentrationDonor[] = recurrentSource.map((donor) => {
+    recurrentAmount += donor.cur;
+    return {
+      nombre: donor.nombre,
+      count: donor.count,
+      ars: donor.ars,
+      usd: donor.usd,
+      share: total > 0 ? donor.cur / total : 0,
+      cumulative: 0,
+    };
+  });
+
+  const newestThenBig = (list: IndexedDonation[]) =>
+    [...list]
+      .sort((a, b) => b.id - a.id || moneyOf(b, params.cur) - moneyOf(a, params.cur))
+      .slice(0, HIT_PREVIEW)
+      .map(toHit);
+
+  const underAmount = underRows.reduce((sum, row) => sum + moneyOf(row, params.cur), 0);
+  const overAmount = overRows.reduce((sum, row) => sum + moneyOf(row, params.cur), 0);
+
+  return {
+    params,
+    scopedCount: scoped.length,
+    scopedArs,
+    scopedUsd,
+    donorCount: ranked.length,
+    cuts,
+    typical,
+    typicalShare: scoped.length > 0 ? typicalCount / scoped.length : 0,
+    under: {
+      count: underRows.length,
+      textShare: scoped.length > 0 ? underRows.length / scoped.length : 0,
+      amountShare: total > 0 ? underAmount / total : 0,
+      rows: newestThenBig(underRows),
+    },
+    over: {
+      count: overRows.length,
+      textShare: scoped.length > 0 ? overRows.length / scoped.length : 0,
+      amountShare: total > 0 ? overAmount / total : 0,
+      rows: [...overRows]
+        .sort((a, b) => moneyOf(b, params.cur) - moneyOf(a, params.cur) || b.id - a.id)
+        .slice(0, HIT_PREVIEW)
+        .map(toHit),
+    },
+    recurrent: {
+      donors: recurrentDonors,
+      donorShare: ranked.length > 0 ? recurrentDonors.length / ranked.length : 0,
+      amountShare: total > 0 ? recurrentAmount / total : 0,
+    },
+    median,
+    mode,
+    modeCount,
+    histogram,
+    fx: fxRows,
+    modalFx,
+    modalFxShare: scoped.length > 0 ? modalFxCount / scoped.length : 0,
+  };
+}
+
+export function homePayload(filters: Filters, concentration?: ConcentrationParams) {
   const result = paginate(filters);
   return {
     meta: ensure().meta,
     result,
     filters: { ...filters, page: result.page },
+    concentration: concentrate(concentration ?? parseConcentration({})),
     ...context(),
   };
 }

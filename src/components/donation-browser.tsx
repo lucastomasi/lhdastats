@@ -47,6 +47,7 @@ export function DonationBrowser({
   months = [],
   donors = [],
   lastDay = "",
+  extraSearch = {},
 }: {
   filters: Filters;
   result: PageResult;
@@ -55,6 +56,7 @@ export function DonationBrowser({
   months?: MonthOption[];
   donors?: DonorChoice[];
   lastDay?: string;
+  extraSearch?: ListSearch;
 }) {
   const navigate = useNavigate();
   const includeDonor = mode === "home";
@@ -74,7 +76,10 @@ export function DonationBrowser({
   }, [donorDraft, donors]);
 
   function go(next: Filters, page = 1) {
-    const search: ListSearch = filtersToListSearch({ ...next, page }, page, includeDonor);
+    const search: ListSearch = {
+      ...(includeDonor ? extraSearch : {}),
+      ...filtersToListSearch({ ...next, page }, page, includeDonor),
+    };
     if (mode === "donor" && donorName) {
       navigate({ to: "/donante/$nombre", params: { nombre: donorName }, search });
     } else {
@@ -284,7 +289,7 @@ export function DonationBrowser({
                   Limpiar filtros
                 </Link>
               ) : (
-                <Link to="/" search={{}} className={buttonClass("outline", "w-full sm:w-auto")}>
+                <Link to="/" search={extraSearch} className={buttonClass("outline", "w-full sm:w-auto")}>
                   Limpiar filtros
                 </Link>
               )

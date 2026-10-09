@@ -1,7 +1,8 @@
 import { createFileRoute, stripSearchParams } from "@tanstack/react-router";
-import { ArchiveDetails, ArchiveSummary, ConcentrationBoard, ConductReport, KickBanner, LedgerBoards, MentionBoard, MiningReport, PeriodChart, PodcastShelf, RefundNote, SiteFooter, WordCloud, YoutubeBoard } from "@/components/archive-view";
+import { ArchiveDetails, ArchiveSummary, ConductReport, KickBanner, LedgerBoards, MentionBoard, MiningReport, PeriodChart, PodcastShelf, RefundNote, SiteFooter, WordCloud, YoutubeBoard } from "@/components/archive-view";
+import { ConcentrationBoard } from "@/components/concentration-board";
 import { BrowserSkeleton, DonationBrowser } from "@/components/donation-browser";
-import { EMPTY_SEARCH, parseListSearch, toFilters, type ListSearch } from "@/lib/archive";
+import { concentrationToSearch, EMPTY_SEARCH, parseListSearch, type ListSearch } from "@/lib/archive";
 import { getArchivePage, getKick, getPodcast } from "@/lib/archive.functions";
 import { formatCount, formatScraped } from "@/lib/format";
 
@@ -13,7 +14,7 @@ export const Route = createFileRoute("/")({
   loaderDeps: ({ search }) => search,
   loader: async ({ deps }) => {
     const [page, podcast, kick] = await Promise.all([
-      getArchivePage({ data: toFilters(deps) }),
+      getArchivePage({ data: deps }),
       getPodcast(),
       getKick(),
     ]);
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { meta, result, filters, podcast, kick, months, donors, lastDay } = Route.useLoaderData();
+  const { meta, result, filters, podcast, kick, months, donors, lastDay, concentration } = Route.useLoaderData();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -41,6 +42,9 @@ function Home() {
             dólares— y no entran en los totales.
           </p>
           <nav className="mt-6 flex flex-wrap gap-x-4 gap-y-2 text-sm font-medium">
+            <a href="#concentracion" className="text-primary underline-offset-2 hover:underline">
+              Concentración
+            </a>
             <a href="#hallazgos" className="text-primary underline-offset-2 hover:underline">
               Hallazgos
             </a>
@@ -74,7 +78,12 @@ function Home() {
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-10 px-4 py-8 md:py-10">
         <ArchiveSummary meta={meta} />
-        <ConcentrationBoard meta={meta} />
+        <ConcentrationBoard
+          report={concentration}
+          filters={filters}
+          months={months}
+          lastDay={lastDay}
+        />
         <MiningReport meta={meta} />
         <ConductReport meta={meta} />
         <MentionBoard meta={meta} />
@@ -104,6 +113,7 @@ function Home() {
             months={months}
             donors={donors}
             lastDay={lastDay}
+            extraSearch={concentrationToSearch(concentration.params)}
           />
         </div>
         <ArchiveDetails meta={meta} />

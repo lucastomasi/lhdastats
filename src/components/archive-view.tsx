@@ -33,58 +33,6 @@ export function ArchiveSummary({ meta }: { meta: ArchiveMeta }) {
   );
 }
 
-export function ConcentrationBoard({ meta }: { meta: ArchiveMeta }) {
-  const mining = meta.mining;
-  const facts = [
-    { kicker: "50% del monto", value: formatCount(mining.halfUsdDonors), text: "personas" },
-    { kicker: "80% del monto", value: formatCount(mining.eightyUsdDonors), text: "personas" },
-    {
-      kicker: "Montos 100, 200, 500 y 1.000",
-      value: formatPct(mining.typicalAmountsShare),
-      text: "de los aportes",
-    },
-    {
-      kicker: "Hasta $ 200",
-      value: formatPct(mining.under200TextShare),
-      text: `${formatPct(mining.under200UsdShare)} del monto en US$`,
-    },
-    {
-      kicker: "Desde $ 5.000",
-      value: formatPct(mining.from5000TextShare),
-      text: `${formatPct(mining.from5000UsdShare)} del monto en US$`,
-    },
-    {
-      kicker: "Recurrentes, 10 o más",
-      value: formatPct(mining.heavyDonorShare),
-      text: `${formatPct(mining.heavyUsdShare)} del monto en US$`,
-    },
-    {
-      kicker: "Mediana",
-      value: formatArs(mining.medianArs),
-      text: `moda ${formatArs(mining.modeArs)}`,
-    },
-    {
-      kicker: "Tipo de cambio modal",
-      value: formatArs(mining.modalFx),
-      text: `${formatPct(mining.modalFxShare)} de las filas`,
-    },
-  ];
-  return (
-    <section className="space-y-4">
-      <SectionHead
-        kicker="Concentración"
-        title="Quién sostiene el archivo"
-        text="Personas, no grafías. Los montos típicos son los de siempre: 100, 200, 500 y 1.000 pesos."
-      />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {facts.map((fact) => (
-          <Finding key={fact.kicker} kicker={fact.kicker} value={fact.value} text={fact.text} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 export function ConductReport({ meta }: { meta: ArchiveMeta }) {
   const mining = meta.mining;
   return (

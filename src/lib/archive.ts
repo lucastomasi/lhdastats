@@ -188,6 +188,97 @@ export type ListSearch = {
   has?: string;
   dev?: string;
   cur?: string;
+  cut?: string;
+  tips?: string;
+  upto?: number;
+  over?: number;
+  reps?: number;
+  cwhen?: string;
+  cfrom?: string;
+  cto?: string;
+  ccur?: string;
+  cdev?: string;
+};
+
+export type ConcentrationParams = {
+  cuts: number[];
+  typical: number[];
+  under: number;
+  over: number;
+  reps: number;
+  when: string;
+  from: string;
+  to: string;
+  cur: "ars" | "usd";
+  refunds: RefundMode;
+};
+
+export type ConcentrationDonor = {
+  nombre: string;
+  count: number;
+  ars: number;
+  usd: number;
+  share: number;
+  cumulative: number;
+};
+
+export type AmountBucket = {
+  amount: number;
+  count: number;
+  share: number;
+};
+
+export type ConcentrationHit = {
+  id: number;
+  nombre: string;
+  ars: number;
+  usd: number;
+  fecha_relativa: string;
+  fecha_aprox: string | null;
+};
+
+export type FxRow = {
+  rate: number;
+  count: number;
+  share: number;
+};
+
+export type ConcentrationBand = {
+  count: number;
+  textShare: number;
+  amountShare: number;
+  rows: ConcentrationHit[];
+};
+
+export type ConcentrationCut = {
+  pct: number;
+  donorCount: number;
+  donors: ConcentrationDonor[];
+};
+
+export type ConcentrationReport = {
+  params: ConcentrationParams;
+  scopedCount: number;
+  scopedArs: number;
+  scopedUsd: number;
+  donorCount: number;
+  cuts: ConcentrationCut[];
+  typical: AmountBucket[];
+  typicalShare: number;
+  under: ConcentrationBand;
+  over: ConcentrationBand;
+  recurrent: {
+    donors: ConcentrationDonor[];
+    donorShare: number;
+    amountShare: number;
+  };
+  median: number;
+  mode: number;
+  modeCount: number;
+  histogram: AmountBucket[];
+  fx: FxRow[];
+  modalFx: number;
+  modalFxShare: number;
 };
 
 export type PageResult = {
@@ -332,6 +423,13 @@ export function parseListSearch(raw: Record<string, unknown>): ListSearch {
       .join(","),
     dev: refundsOf(raw.dev ?? raw.refunds),
     cur: currencyOf(raw.cur ?? raw.currency),
+    cut: clip(str(raw.cut), 40) || "50,80",
+    tips: clip(str(raw.tips), 80) || "100,200,500,1000",
+    cwhen: whenOf(raw.cwhen),
+    cfrom: dateOf(raw.cfrom),
+    cto: dateOf(raw.cto),
+    ccur: str(raw.ccur) === "usd" ? "usd" : "ars",
+    cdev: REFUNDS.includes(str(raw.cdev) as RefundMode) ? str(raw.cdev) : "out",
   };
   const min = amountOf(raw.min ?? raw.minArs);
   const max = amountOf(raw.max ?? raw.maxArs, true);
@@ -341,7 +439,124 @@ export function parseListSearch(raw: Record<string, unknown>): ListSearch {
   if (max !== null) search.max = max;
   if (minusd !== null) search.minusd = minusd;
   if (maxusd !== null) search.maxusd = maxusd;
+  const upto = amountOf(raw.upto ?? raw.under);
+  const over = amountOf(raw.over);
+  const reps = intOf(raw.reps, 1, 1000);
+  if (upto !== null) search.upto = upto;
+  if (over !== null) search.over = over;
+  if (reps !== null) search.reps = reps;
   return search;
+}
+
+function intOf(value: unknown, min: number, max: number): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number.parseInt(str(value), 10);
+  if (!Number.isFinite(n)) return null;
+  const rounded = Math.round(n);
+  if (rounded < min || rounded > max) return null;
+  return rounded;
+}
+
+export const DEFAULT_CONCENTRATION: ConcentrationParams = {
+  cuts: [50, 80],
+  typical: [100, 200, 500, 1000],
+  under: 200,
+  over: 5000,
+  reps: 10,
+  when: "",
+  from: "",
+  to: "",
+  cur: "ars",
+  refunds: "out",
+};
+
+function numberList(value: unknown, fallback: number[], min: number, max: number, limit: number) {
+  const raw = clip(str(value), 80);
+  if (!raw) return [...fallback];
+  const seen = new Set<number>();
+  const list: number[] = [];
+  for (const part of raw.split(/[,\s]+/)) {
+    const n = Number(part.replace(",", "."));
+    if (!Number.isFinite(n)) continue;
+    const rounded = Math.round(n * 100) / 100;
+    if (rounded < min || rounded > max || seen.has(rounded)) continue;
+    seen.add(rounded);
+    list.push(rounded);
+    if (list.length >= limit) break;
+  }
+  return list.length > 0 ? list.sort((a, b) => a - b) : [...fallback];
+}
+
+export function parseConcentration(input: unknown): ConcentrationParams {
+  const raw = asRecord(input);
+  const cuts = numberList(raw.cut ?? raw.cuts, DEFAULT_CONCENTRATION.cuts, 1, 99, 4).map((n) => Math.round(n));
+  const typical = numberList(raw.tips ?? raw.typical, DEFAULT_CONCENTRATION.typical, 0.01, 1_000_000_000, 12);
+  const under = amountOf(raw.upto ?? raw.under) ?? DEFAULT_CONCENTRATION.under;
+  const over = amountOf(raw.over) ?? DEFAULT_CONCENTRATION.over;
+  const reps = intOf(raw.reps, 1, 1000) ?? DEFAULT_CONCENTRATION.reps;
+  const cur = str(raw.ccur) === "usd" ? "usd" : "ars";
+  const refundsRaw = str(raw.cdev);
+  return {
+    cuts: cuts.length ? cuts : [...DEFAULT_CONCENTRATION.cuts],
+    typical,
+    under,
+    over,
+    reps,
+    when: whenOf(raw.cwhen),
+    from: dateOf(raw.cfrom),
+    to: dateOf(raw.cto),
+    cur,
+    refunds: REFUNDS.includes(refundsRaw as RefundMode) ? (refundsRaw as RefundMode) : "out",
+  };
+}
+
+function sameList(a: number[], b: number[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+export function concentrationToSearch(params: ConcentrationParams): ListSearch {
+  const search: ListSearch = {};
+  if (!sameList(params.cuts, DEFAULT_CONCENTRATION.cuts)) search.cut = params.cuts.join(",");
+  if (!sameList(params.typical, DEFAULT_CONCENTRATION.typical)) search.tips = params.typical.join(",");
+  if (params.under !== DEFAULT_CONCENTRATION.under) search.upto = params.under;
+  if (params.over !== DEFAULT_CONCENTRATION.over) search.over = params.over;
+  if (params.reps !== DEFAULT_CONCENTRATION.reps) search.reps = params.reps;
+  if (params.when) search.cwhen = params.when;
+  if (params.from) search.cfrom = params.from;
+  if (params.to) search.cto = params.to;
+  if (params.cur !== DEFAULT_CONCENTRATION.cur) search.ccur = params.cur;
+  if (params.refunds !== DEFAULT_CONCENTRATION.refunds) search.cdev = params.refunds;
+  return search;
+}
+
+export function concentrationSlice(search: ListSearch): ListSearch {
+  const next: ListSearch = {};
+  if (search.cut) next.cut = search.cut;
+  if (search.tips) next.tips = search.tips;
+  if (search.upto != null) next.upto = search.upto;
+  if (search.over != null) next.over = search.over;
+  if (search.reps != null) next.reps = search.reps;
+  if (search.cwhen) next.cwhen = search.cwhen;
+  if (search.cfrom) next.cfrom = search.cfrom;
+  if (search.cto) next.cto = search.cto;
+  if (search.ccur) next.ccur = search.ccur;
+  if (search.cdev) next.cdev = search.cdev;
+  return next;
+}
+
+export function concentrationActive(params: ConcentrationParams) {
+  return Boolean(
+    !sameList(params.cuts, DEFAULT_CONCENTRATION.cuts) ||
+      !sameList(params.typical, DEFAULT_CONCENTRATION.typical) ||
+      params.under !== DEFAULT_CONCENTRATION.under ||
+      params.over !== DEFAULT_CONCENTRATION.over ||
+      params.reps !== DEFAULT_CONCENTRATION.reps ||
+      params.when ||
+      params.from ||
+      params.to ||
+      params.cur !== DEFAULT_CONCENTRATION.cur ||
+      params.refunds !== DEFAULT_CONCENTRATION.refunds,
+  );
 }
 
 export function parseFilters(input: unknown): Filters {
@@ -479,6 +694,16 @@ export const EMPTY_SEARCH: ListSearch = {
   has: "",
   dev: "in",
   cur: "",
+  cut: "50,80",
+  tips: "100,200,500,1000",
+  upto: 200,
+  over: 5000,
+  reps: 10,
+  cwhen: "",
+  cfrom: "",
+  cto: "",
+  ccur: "ars",
+  cdev: "out",
 };
 
 export const EMPTY_FILTERS: Filters = toFilters(EMPTY_SEARCH);

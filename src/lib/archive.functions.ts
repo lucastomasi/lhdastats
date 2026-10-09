@@ -1,11 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
-import { parseFilters, type Filters } from "./archive";
+import { parseConcentration, parseFilters, type Filters } from "./archive";
 
 export const getArchivePage = createServerFn({ method: "GET" })
-  .validator((input: Filters) => parseFilters(input))
+  .validator((input: unknown) => ({
+    filters: parseFilters(input),
+    concentration: parseConcentration(input),
+  }))
   .handler(async ({ data }) => {
     const { homePayload } = await import("./donations.server");
-    return homePayload(data);
+    return homePayload(data.filters, data.concentration);
   });
 
 export const getKick = createServerFn({ method: "GET" }).handler(async () => {

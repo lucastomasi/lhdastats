@@ -11,7 +11,15 @@ import {
   resolveDateRange,
   ymd,
 } from "./query.ts";
-import { filtersToListSearch, parseFilters, parseListSearch, toFilters } from "./archive.ts";
+import {
+  concentrationToSearch,
+  DEFAULT_CONCENTRATION,
+  filtersToListSearch,
+  parseConcentration,
+  parseFilters,
+  parseListSearch,
+  toFilters,
+} from "./archive.ts";
 
 test("fold-insensitive query matches phrases and exclusions", () => {
   const query = parseTextQuery('  "te amo" palán -kuka  ');
@@ -69,4 +77,35 @@ test("parseFilters keeps Filters-shaped loader input", () => {
   assert.equal(again.refunds, "only");
   assert.equal(again.currency, "usd");
   assert.equal(again.sort, "reciente");
+});
+
+test("concentration params default and stay in the URL only when changed", () => {
+  const defaults = parseConcentration({});
+  assert.deepEqual(defaults, DEFAULT_CONCENTRATION);
+  assert.deepEqual(concentrationToSearch(defaults), {});
+  const custom = parseConcentration({
+    cut: "40, 90",
+    tips: "100,250",
+    upto: 150,
+    over: 8000,
+    reps: "15",
+    cwhen: "2026-09",
+    ccur: "usd",
+    cdev: "in",
+  });
+  assert.deepEqual(custom.cuts, [40, 90]);
+  assert.deepEqual(custom.typical, [100, 250]);
+  assert.equal(custom.under, 150);
+  assert.equal(custom.over, 8000);
+  assert.equal(custom.reps, 15);
+  assert.equal(custom.when, "2026-09");
+  assert.equal(custom.cur, "usd");
+  assert.equal(custom.refunds, "in");
+  const search = concentrationToSearch(custom);
+  assert.equal(search.cut, "40,90");
+  assert.equal(search.tips, "100,250");
+  assert.equal(search.upto, 150);
+  assert.equal(search.ccur, "usd");
+  assert.equal(search.cdev, "in");
+  assert.equal(search.cwhen, "2026-09");
 });
