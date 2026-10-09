@@ -157,46 +157,42 @@ export function renderInstallPageHtml(template, { host, url } = {}) {
     .replaceAll("{{APP_URL}}", escapeHtml(stripInstallParams(url)));
 }
 
-export function renderWebManifest(hostHeader) {
-  const name = appNameFromHost(hostHeader);
-  return JSON.stringify(
-    {
-      name,
-      short_name: name,
-      id: "/",
-      start_url: "/",
-      scope: "/",
-      display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
-      icons: [
-        {
-          src: "/__grok/icon-180.png",
-          sizes: "180x180",
-          type: "image/png",
-        },
-      ],
-    },
-    null,
-    2,
-  );
+/**
+ * LHDA stats: the app ships its own manifest at /manifest.webmanifest. The
+ * platform path /__grok/manifest.webmanifest answers with the same content so
+ * an injected or cached platform tag still installs with the LHDA icon/name.
+ */
+export const LHDA_MANIFEST = {
+  name: "Donaciones de Los Herederos de Alberdi",
+  short_name: "LHDA stats",
+  description: "Archivo y estadísticas de las donaciones públicas de Los Herederos de Alberdi.",
+  id: "/",
+  start_url: "/",
+  scope: "/",
+  display: "standalone",
+  lang: "es-AR",
+  theme_color: "#f4f0e6",
+  background_color: "#f4f0e6",
+  icons: [
+    { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+    { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+    { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+  ],
+};
+
+// eslint-disable-next-line no-unused-vars
+export function renderWebManifest(_hostHeader) {
+  return JSON.stringify(LHDA_MANIFEST, null, 2);
 }
 
-export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
+export function grokPwaHeadTags() {
   return [
-    // Standalone display comes from the manifest ("display": "standalone");
-    // the legacy *-web-app-capable metas it replaces are deliberately absent.
-    ["manifest", '<link rel="manifest" href="/__grok/manifest.webmanifest">'],
-    ["apple-touch-icon", '<link rel="apple-touch-icon" href="/__grok/icon-180.png">'],
-    [
-      "apple-mobile-web-app-title",
-      `<meta name="apple-mobile-web-app-title" content="${escapeHtml(appName)}">`,
-    ],
-    [
-      "apple-mobile-web-app-status-bar-style",
-      '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
-    ],
-    ["theme-color", '<meta name="theme-color" content="#000000">'],
+    ["manifest", '<link rel="manifest" href="/manifest.webmanifest">'],
+    ["apple-touch-icon", '<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">'],
+    ["apple-mobile-web-app-title", '<meta name="apple-mobile-web-app-title" content="LHDA stats">'],
+    ["apple-mobile-web-app-status-bar-style", '<meta name="apple-mobile-web-app-status-bar-style" content="default">'],
+    ["theme-color", '<meta name="theme-color" content="#f4f0e6">'],
   ];
 }
 
@@ -448,10 +444,10 @@ export function injectGrokPwaHead(html, ctx = {}) {
   let next = stripShareMetaTags(html);
   if (!readGrokExtensionsEnabled()) next = stripGrokExtensionsScript(next);
 
-  const missing = grokPwaHeadTags(appName)
+  const missing = grokPwaHeadTags()
     .filter(([key]) => {
-      if (key === "manifest") return !next.includes('href="/__grok/manifest.webmanifest"');
-      if (key === "apple-touch-icon") return !next.includes('href="/__grok/icon-180.png"');
+      if (key === "manifest") return !/rel=["']manifest["']/i.test(next);
+      if (key === "apple-touch-icon") return !/rel=["']apple-touch-icon["']/i.test(next);
       return !next.includes(`name="${key}"`);
     })
     .map(([, tag]) => tag);
