@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { meta, result, filters, podcast, kick } = Route.useLoaderData();
+  const { meta, result, filters, podcast, kick, months, donors, lastDay } = Route.useLoaderData();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -93,10 +93,18 @@ function Home() {
             <p className="text-xs font-semibold tracking-widest text-primary uppercase">Archivo</p>
             <h2 className="text-3xl tracking-tight">Buscar donación por donación</h2>
             <p className="text-sm leading-6 text-muted-foreground">
-              Nombre o mensaje, monto mínimo y orden. El CSV baja exactamente lo que el filtro deja.
+              Empezá por la fecha: un día, un rango o un mes. Después combiná texto, donante, monto, conducta y
+              devoluciones. El CSV baja exactamente lo que el filtro deja. El orden por defecto es más recientes.
             </p>
           </div>
-          <DonationBrowser filters={filters} result={result} mode="home" />
+          <DonationBrowser
+            filters={filters}
+            result={result}
+            mode="home"
+            months={months}
+            donors={donors}
+            lastDay={lastDay}
+          />
         </div>
         <ArchiveDetails meta={meta} />
       </main>

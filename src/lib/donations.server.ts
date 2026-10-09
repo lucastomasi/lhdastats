@@ -7,9 +7,11 @@ import {
   readDonorName,
   type ArchiveMeta,
   type Donation,
+  type DonorChoice,
   type DonorProfile,
   type Filters,
   type Mining,
+  type MonthOption,
   type PageResult,
   type PeriodPoint,
   type WordTerm,
@@ -17,7 +19,18 @@ import {
 import { STOP_WORDS } from "./stopwords";
 import { canonicalKey } from "./identities";
 import { KICK_GIFTS } from "./chat-board";
-import { classifyMessage, CONDUCT_ORDER, hasLaugh, youtubeIds, type ConductKey } from "./conduct";
+import { classifyMessage, CONDUCT_ORDER, hasLaugh, hasLink, youtubeIds, type ConductKey } from "./conduct";
+import {
+  fold,
+  formatYmd,
+  isoToYmd,
+  looksUsdOriginal,
+  matchText,
+  monthLabel,
+  parseTextQuery,
+  resolveDateRange,
+  ymdParts,
+} from "./query";
 
 type RawDonation = Omit<Donation, "devuelta" | "devolucion">;
 
@@ -40,12 +53,23 @@ type RefundFile = {
 type IndexedDonation = Donation & {
   nameKey: string;
   haystack: string;
+  day: number | null;
+  hasLink: boolean;
+  hasYoutube: boolean;
+  blank: boolean;
+  conduct: ConductKey;
+  usdOriginal: boolean;
+  donorUsd: number;
+  donorLabel: string;
 };
 
 type Cache = {
   rows: IndexedDonation[];
   meta: ArchiveMeta;
   donors: Map<string, DonorProfile>;
+  months: MonthOption[];
+  donorChoices: DonorChoice[];
+  lastDay: number | null;
 };
 
 const TOKEN = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_]{3,}/g;
@@ -96,9 +120,7 @@ function readJsonFile<T>(name: string): T {
 
 let cache: Cache | null = null;
 
-export function fold(value: string) {
-  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-}
+export { fold };
 
 function periodOf(label: string): { key: string; label: string } {
   const match = /^Hace\s+(\d+)\s+(\S+)$/i.exec(label.trim());
@@ -165,12 +187,21 @@ function build(): Cache {
   const rows: IndexedDonation[] = parsed.donations.map((row) => {
     const devolucion = byId.get(row.id) ?? null;
     const extra = devolucion ? " devuelta devolucion reintegro" : "";
+    const message = row.mensaje ?? "";
     return {
       ...row,
       devuelta: Boolean(devolucion),
       devolucion,
       nameKey: canonicalKey(fold(row.nombre)),
-      haystack: fold(`${row.nombre} ${row.mensaje}${extra}`),
+      haystack: fold(`${row.nombre} ${message}${extra}`),
+      day: isoToYmd(row.fecha_aprox),
+      hasLink: hasLink(message),
+      hasYoutube: youtubeIds(message).length > 0,
+      blank: message.trim().length === 0,
+      conduct: classifyMessage(message),
+      usdOriginal: looksUsdOriginal(row.monto_usd),
+      donorUsd: 0,
+      donorLabel: row.nombre,
     };
   });
 
@@ -317,10 +348,38 @@ function build(): Cache {
     mining: mine(rows, donorProfiles, totalArs, totalUsd, counted),
   };
 
+  const donorByKey = new Map(donorProfiles.map((donor) => [donor.nameKey, donor]));
+  const monthCounts = new Map<string, number>();
+  let lastDay: number | null = null;
+  for (const row of rows) {
+    const donor = donorByKey.get(row.nameKey);
+    row.donorUsd = donor?.usd ?? 0;
+    row.donorLabel = donor?.nombre ?? row.nombre;
+    if (row.day == null) continue;
+    if (lastDay == null || row.day > lastDay) lastDay = row.day;
+    const { year, month } = ymdParts(row.day);
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+    monthCounts.set(key, (monthCounts.get(key) ?? 0) + 1);
+  }
+
+  const months: MonthOption[] = [...monthCounts.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([key, count]) => {
+      const [year, month] = key.split("-").map(Number);
+      return { key, label: monthLabel(year, month), count };
+    });
+
+  const donorChoices: DonorChoice[] = [...donorProfiles]
+    .sort((a, b) => b.count - a.count || a.nombre.localeCompare(b.nombre, "es"))
+    .map((donor) => ({ nombre: donor.nombre, count: donor.count }));
+
   return {
     rows,
     meta,
-    donors: new Map(donorProfiles.map((donor) => [donor.nameKey, donor])),
+    donors: donorByKey,
+    months,
+    donorChoices,
+    lastDay,
   };
 }
 
@@ -588,27 +647,55 @@ function ensure() {
   return cache;
 }
 
+function context() {
+  const { months, donorChoices, lastDay } = ensure();
+  return { months, donors: donorChoices, lastDay: lastDay == null ? "" : formatYmd(lastDay) };
+}
+
 function select(filters: Filters) {
-  const { rows } = ensure();
-  const q = fold(filters.q);
+  const { rows, lastDay } = ensure();
+  const query = parseTextQuery(filters.q);
   const donor = canonicalKey(fold(filters.donor));
-  let matched = rows.filter((row) => {
-    if (donor && row.nameKey !== donor) return false;
-    if (q && !row.haystack.includes(q)) return false;
-    if (filters.min !== null && row.monto_ars < filters.min) return false;
-    return true;
-  });
-  if (filters.sort === "antigua") matched = [...matched].reverse();
-  else if (filters.sort === "mayor") {
-    matched = [...matched].sort((a, b) => b.monto_ars - a.monto_ars || b.id - a.id);
-  } else if (filters.sort === "menor") {
-    matched = [...matched].sort((a, b) => a.monto_ars - b.monto_ars || b.id - a.id);
+  const range = resolveDateRange(filters, Date.now(), lastDay);
+  const matched: IndexedDonation[] = [];
+  let ars = 0;
+  let usd = 0;
+  for (const row of rows) {
+    if (donor && row.nameKey !== donor) continue;
+    if (query.active && !matchText(row.haystack, query)) continue;
+    if (filters.minArs !== null && row.monto_ars < filters.minArs) continue;
+    if (filters.maxArs !== null && row.monto_ars > filters.maxArs) continue;
+    if (filters.minUsd !== null && row.monto_usd < filters.minUsd) continue;
+    if (filters.maxUsd !== null && row.monto_usd > filters.maxUsd) continue;
+    if (range && (row.day == null || row.day < range.from || row.day > range.to)) continue;
+    if (filters.conduct && row.conduct !== filters.conduct) continue;
+    if (filters.hasLink && !row.hasLink) continue;
+    if (filters.hasYoutube && !row.hasYoutube) continue;
+    if (filters.empty && !row.blank) continue;
+    if (filters.priv && !row.privado) continue;
+    if (filters.refunds === "out" && row.devuelta) continue;
+    if (filters.refunds === "only" && !row.devuelta) continue;
+    if (filters.currency === "usd" && !row.usdOriginal) continue;
+    if (filters.currency === "ars" && row.usdOriginal) continue;
+    matched.push(row);
+    ars += row.monto_ars;
+    usd += row.monto_usd;
   }
-  return matched;
+
+  if (filters.sort === "antigua") matched.reverse();
+  else if (filters.sort === "mayor") matched.sort((a, b) => b.monto_ars - a.monto_ars || b.id - a.id);
+  else if (filters.sort === "menor") matched.sort((a, b) => a.monto_ars - b.monto_ars || b.id - a.id);
+  else if (filters.sort === "donante") {
+    matched.sort((a, b) => a.donorLabel.localeCompare(b.donorLabel, "es") || b.id - a.id);
+  } else if (filters.sort === "aporte") {
+    matched.sort((a, b) => b.donorUsd - a.donorUsd || b.monto_usd - a.monto_usd || b.id - a.id);
+  }
+
+  return { matched, ars, usd };
 }
 
 function paginate(filters: Filters): PageResult {
-  const matched = select(filters);
+  const { matched, ars, usd } = select(filters);
   const total = matched.length;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(filters.page, pages);
@@ -618,6 +705,8 @@ function paginate(filters: Filters): PageResult {
     pages,
     page,
     rows: matched.slice(start, start + PAGE_SIZE).map(toPublic),
+    ars,
+    usd,
   };
 }
 
@@ -627,6 +716,7 @@ export function homePayload(filters: Filters) {
     meta: ensure().meta,
     result,
     filters: { ...filters, page: result.page },
+    ...context(),
   };
 }
 
@@ -640,6 +730,7 @@ export function donorPayload(name: string, filters: Filters) {
     donor,
     result,
     filters: { ...scoped, page: result.page },
+    ...context(),
   };
 }
 
@@ -651,7 +742,7 @@ function csvCell(value: string | number | boolean) {
 
 export function exportCsv(url: URL) {
   const filters = parseFilters(Object.fromEntries(url.searchParams.entries()));
-  const rows = select(filters).map(toPublic);
+  const rows = select(filters).matched.map(toPublic);
   const header = [
     "id",
     "nombre",

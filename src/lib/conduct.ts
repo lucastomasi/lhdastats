@@ -36,6 +36,10 @@ function fold(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
+export function hasLink(message: string) {
+  return URL_RE.test(message);
+}
+
 export function hasLaugh(message: string) {
   return LAUGH_RE.test(fold(message));
 }

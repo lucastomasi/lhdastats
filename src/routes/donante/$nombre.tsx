@@ -23,7 +23,7 @@ export const Route = createFileRoute("/donante/$nombre")({
 function DonorPage() {
   const data = Route.useLoaderData();
   if (!data.found) return <MissingDonor />;
-  const { donor, result, filters } = data;
+  const { donor, result, filters, months, donors, lastDay } = data;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -91,7 +91,15 @@ function DonorPage() {
             amount={formatArs(donor.biggest.monto_ars)}
           />
         </section>
-        <DonationBrowser filters={filters} result={result} mode="donor" donorName={donor.nombre} />
+        <DonationBrowser
+          filters={filters}
+          result={result}
+          mode="donor"
+          donorName={donor.nombre}
+          months={months}
+          donors={donors}
+          lastDay={lastDay}
+        />
       </main>
       <SiteFooter source="https://ceneka.net/losherederosdealberdi" />
     </div>
