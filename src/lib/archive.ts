@@ -559,6 +559,35 @@ export function concentrationActive(params: ConcentrationParams) {
   );
 }
 
+export function concentrationBandSearch(params: ConcentrationParams, band: "under" | "over"): ListSearch {
+  const scoped: Filters = {
+    q: "",
+    donor: "",
+    sort: band === "over" ? "mayor" : "reciente",
+    minArs: null,
+    maxArs: null,
+    minUsd: null,
+    maxUsd: null,
+    from: params.from,
+    to: params.to,
+    when: params.when,
+    conduct: "",
+    hasLink: false,
+    hasYoutube: false,
+    empty: false,
+    priv: false,
+    refunds: params.refunds === "in" ? "in" : params.refunds,
+    currency: "",
+    page: 1,
+  };
+  if (params.cur === "usd") {
+    if (band === "under") scoped.maxUsd = params.under;
+    else scoped.minUsd = params.over;
+  } else if (band === "under") scoped.maxArs = params.under;
+  else scoped.minArs = params.over;
+  return { ...filtersToListSearch(scoped), ...concentrationToSearch(params) };
+}
+
 export function parseFilters(input: unknown): Filters {
   return toFilters(parseListSearch(asRecord(input)));
 }

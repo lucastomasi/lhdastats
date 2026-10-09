@@ -12,6 +12,7 @@ import {
   ymd,
 } from "./query.ts";
 import {
+  concentrationBandSearch,
   concentrationToSearch,
   DEFAULT_CONCENTRATION,
   filtersToListSearch,
@@ -108,4 +109,13 @@ test("concentration params default and stay in the URL only when changed", () =>
   assert.equal(search.ccur, "usd");
   assert.equal(search.cdev, "in");
   assert.equal(search.cwhen, "2026-09");
+  const under = concentrationBandSearch(custom, "under");
+  const over = concentrationBandSearch(custom, "over");
+  assert.equal(under.maxusd, 150);
+  assert.equal(under.sort, undefined);
+  assert.equal(under.when, "2026-09");
+  assert.equal(under.q, undefined);
+  assert.equal(under.cut, "40,90");
+  assert.equal(over.minusd, 8000);
+  assert.equal(over.sort, "mayor");
 });

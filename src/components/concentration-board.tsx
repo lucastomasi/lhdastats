@@ -1,12 +1,12 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Badge, buttonClass, fieldClass } from "@/components/ui";
 import {
   concentrationActive,
+  concentrationBandSearch,
   concentrationToSearch,
   DEFAULT_CONCENTRATION,
   filtersToListSearch,
-  filtersToSearch,
   type ConcentrationDonor,
   type ConcentrationHit,
   type ConcentrationParams,
@@ -71,8 +71,8 @@ export function ConcentrationBoard({
     });
   }
 
-  const underHref = bandHref(params, "under", archiveSearch);
-  const overHref = bandHref(params, "over", archiveSearch);
+  const underSearch = concentrationBandSearch(params, "under");
+  const overSearch = concentrationBandSearch(params, "over");
 
   return (
     <section id="concentracion" className="scroll-mt-6 space-y-4">
@@ -144,18 +144,21 @@ export function ConcentrationBoard({
           </label>
           <label className="grid gap-1 text-xs font-medium text-muted-foreground">
             Moneda
-            <select name="ccur" defaultValue={params.cur} className={fieldClass}>
+            <select
+              name="ccur"
+              value={params.cur}
+              onChange={(event) => apply({ ...params, cur: event.target.value === "usd" ? "usd" : "ars" })}
+              className={fieldClass}
+            >
               <option value="ars">Pesos</option>
               <option value="usd">Dólares</option>
             </select>
           </label>
         </div>
 
+        <CutSliders cuts={params.cuts} onCommit={(cuts) => apply({ ...params, cuts })} />
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-            Cortes del monto (%)
-            <input name="cut" defaultValue={params.cuts.join(", ")} className={fieldClass} />
-          </label>
           <label className="grid gap-1 text-xs font-medium text-muted-foreground">
             Montos típicos
             <input name="tips" defaultValue={params.typical.join(", ")} className={fieldClass} />
@@ -174,7 +177,15 @@ export function ConcentrationBoard({
           </label>
           <label className="grid gap-1 text-xs font-medium text-muted-foreground">
             Devoluciones
-            <select name="cdev" defaultValue={params.refunds} className={fieldClass}>
+            <select
+              name="cdev"
+              value={params.refunds}
+              onChange={(event) => {
+                const refunds = event.target.value;
+                apply({ ...params, refunds: refunds === "in" || refunds === "only" ? refunds : "out" });
+              }}
+              className={fieldClass}
+            >
               <option value="out">Excluirlas</option>
               <option value="in">Incluirlas</option>
               <option value="only">Solo devoluciones</option>
@@ -215,7 +226,7 @@ export function ConcentrationBoard({
           <HitList
             rows={report.under.rows}
             cur={params.cur}
-            href={underHref}
+            search={underSearch}
             total={report.under.count}
           />
         </Disclosure>
@@ -228,7 +239,7 @@ export function ConcentrationBoard({
           <HitList
             rows={report.over.rows}
             cur={params.cur}
-            href={overHref}
+            search={overSearch}
             total={report.over.count}
             bigger
           />
@@ -416,13 +427,13 @@ function AmountTable({
 function HitList({
   rows,
   cur,
-  href,
+  search,
   total,
   bigger,
 }: {
   rows: ConcentrationHit[];
   cur: "ars" | "usd";
-  href: string;
+  search: ListSearch;
   total: number;
   bigger?: boolean;
 }) {
@@ -455,7 +466,7 @@ function HitList({
         <p className="text-xs text-muted-foreground">
           {bigger ? "Los de mayor monto" : "Los más recientes"} · {formatCount(rows.length)} de {formatCount(total)}
         </p>
-        <Link to={href} className="text-sm font-medium text-primary underline-offset-2 hover:underline">
+        <Link to="/" search={search} hash="archivo" className="text-sm font-medium text-primary underline-offset-2 hover:underline">
           Ver todos en el buscador
         </Link>
       </div>
@@ -510,49 +521,91 @@ function Histogram({
   );
 }
 
-function bandHref(params: ConcentrationParams, band: "under" | "over", archive: ListSearch) {
-  const scoped: Filters = {
-    q: "",
-    donor: "",
-    sort: band === "over" ? "mayor" : "reciente",
-    minArs: null,
-    maxArs: null,
-    minUsd: null,
-    maxUsd: null,
-    from: params.from,
-    to: params.to,
-    when: params.when,
-    conduct: "",
-    hasLink: false,
-    hasYoutube: false,
-    empty: false,
-    priv: false,
-    refunds: params.refunds === "in" ? "in" : params.refunds,
-    currency: "",
-    page: 1,
-  };
-  if (params.cur === "usd") {
-    if (band === "under") scoped.maxUsd = params.under;
-    else scoped.minUsd = params.over;
-  } else if (band === "under") scoped.maxArs = params.under;
-  else scoped.minArs = params.over;
-  const href = filtersToSearch(scoped);
-  const extra = new URLSearchParams();
-  for (const [key, value] of Object.entries(archive)) {
-    if (value == null || value === "" || key === "min" || key === "max" || key === "minusd" || key === "maxusd") {
-      continue;
-    }
-    extra.set(key, String(value));
+function CutSliders({ cuts, onCommit }: { cuts: number[]; onCommit: (cuts: number[]) => void }) {
+  const [draft, setDraft] = useState(cuts);
+  const draftRef = useRef(cuts);
+  const publishedRef = useRef(cuts);
+  draftRef.current = draft;
+
+  function sameCuts(a: number[], b: number[]) {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
   }
-  extra.delete("page");
-  extra.delete("sort");
-  extra.delete("when");
-  extra.delete("from");
-  extra.delete("to");
-  extra.delete("dev");
-  const joined = extra.toString();
-  if (!joined) return href;
-  return href.includes("?") ? `${href}&${joined}` : `${href}?${joined}`;
+
+  function publish(next: number[]) {
+    const clean = [...new Set(next.filter((n) => n >= 1 && n <= 99))].sort((a, b) => a - b).slice(0, 4);
+    const resolved = clean.length ? clean : [...DEFAULT_CONCENTRATION.cuts];
+    draftRef.current = resolved;
+    setDraft(resolved);
+    if (sameCuts(resolved, publishedRef.current)) return;
+    publishedRef.current = resolved;
+    onCommit(resolved);
+  }
+
+  function setAt(index: number, raw: number) {
+    const value = Math.min(99, Math.max(1, Math.round(Number.isFinite(raw) ? raw : 1)));
+    const next = draftRef.current.map((cut, i) => (i === index ? value : cut));
+    draftRef.current = next;
+    setDraft(next);
+  }
+
+  return (
+    <fieldset className="space-y-3">
+      <legend className="text-xs font-medium text-muted-foreground">Cortes del monto (%)</legend>
+      <p className="text-xs text-muted-foreground">Hasta 4 cortes. El slider aplica al soltar; el número, al salir del campo.</p>
+      <input type="hidden" name="cut" value={draft.join(",")} />
+      {draft.map((cut, index) => (
+        <div key={`${index}-${draft.length}`} className="flex items-center gap-3">
+          <input
+            type="range"
+            min={1}
+            max={99}
+            value={cut}
+            aria-label={`Corte ${index + 1}`}
+            onChange={(event) => setAt(index, Number(event.target.value))}
+            onPointerUp={() => publish(draftRef.current)}
+            onBlur={() => publish(draftRef.current)}
+            className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+          />
+          <input
+            type="number"
+            min={1}
+            max={99}
+            value={cut}
+            aria-label={`Porcentaje del corte ${index + 1}`}
+            onChange={(event) => setAt(index, Number(event.target.value))}
+            onBlur={() => publish(draftRef.current)}
+            className={`${fieldClass} w-20 px-2 text-center`}
+          />
+          {draft.length > 1 ? (
+            <button
+              type="button"
+              className={buttonClass("ghost", "h-9 w-9")}
+              aria-label={`Quitar corte ${cut}%`}
+              onClick={() => publish(draftRef.current.filter((_, i) => i !== index))}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ))}
+      {draft.length < 4 ? (
+        <button
+          type="button"
+          className={buttonClass("ghost", "h-9 px-3")}
+          onClick={() => publish([...draftRef.current, nextCut(draftRef.current)])}
+        >
+          Agregar corte
+        </button>
+      ) : null}
+    </fieldset>
+  );
+}
+
+function nextCut(existing: number[]) {
+  for (const candidate of [90, 70, 60, 40, 30, 20, 10, 95, 80, 50]) {
+    if (!existing.includes(candidate)) return candidate;
+  }
+  return Math.min(99, Math.max(1, (existing.at(-1) ?? 50) + 5));
 }
 
 function chipClass(on: boolean) {

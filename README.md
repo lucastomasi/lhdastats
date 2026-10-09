@@ -20,6 +20,24 @@ npm run dev
 - Dev: [http://127.0.0.1:8080](http://127.0.0.1:8080).
 - `npm run build` pide ~4 GB de heap por el JSON (~12 MB, ~40k filas). En máquinas chicas: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
 
+## Concentración
+
+La sección **Quién sostiene el archivo** se recorta con parámetros propios (no pisan el buscador). Quedan en la URL para compartir. El botón **Valores por defecto** los saca y deja el resto.
+
+| Clave | Default | Qué hace |
+| --- | --- | --- |
+| `cut` | `50,80` (omitido) | 1 a 4 porcentajes del monto acumulado |
+| `tips` | `100,200,500,1000` | Montos típicos a contar |
+| `upto` | `200` | Umbral inclusive de abajo |
+| `over` | `5000` | Umbral inclusive de arriba |
+| `reps` | `10` | Mínimo de aportes para recurrentes |
+| `cwhen` | (todo el archivo) | `hoy`, `ayer`, `semana`, `mes`, `ultimo` o `YYYY-MM` |
+| `cfrom` / `cto` | (vacío) | Rango de calendario, moneda civil ART |
+| `ccur` | `ars` (omitido) | `ars` o `usd` |
+| `cdev` | `out` (omitido) | Devoluciones: `out`, `in`, `only` |
+
+Ejemplo: `/?cut=40,90&cwhen=2026-09&ccur=usd&upto=50&over=1000&reps=5`. Las tarjetas y sus desplegables se recalculan con ese recorte.
+
 ## Vercel (sitio 24/7)
 
 Vercel **no importa Origin** (`origin.cursor.com`). Solo GitHub, GitLab o Bitbucket.
